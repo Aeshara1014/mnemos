@@ -1,0 +1,16 @@
+"""Consolidation: offline memory processing that runs between sessions.
+
+Consolidation is the "sleeping brain" of Mnemos. It runs a series of passes
+that maintain, transform, and enrich the memory store:
+
+1. Decay — recalculate strength/stability/accessibility for all active engrams
+2. Softening — LLM-mediated lossy compression of low-resolution memories
+3. Belief Review — challenge stagnant beliefs that haven't been tested
+4. Reflection — generate thoughts, curiosity questions, narrative self-summary
+5. Connection Discovery — find and create new semantic connections
+
+The daemon orchestrates these passes in order, respecting activity gates
+and configuration for which passes are enabled.
+"""
+
+from .daemon import ConsolidationDaemon

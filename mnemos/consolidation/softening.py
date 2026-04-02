@@ -1,0 +1,314 @@
+"""
+Softening pass: LLM-mediated lossy compression of fading memories.
+
+When a memory's accessibility drops, its content is rewritten at lower
+resolution — preserving gist and emotional essence while losing specific
+details. This models how human memories naturally lose detail over time.
+
+Shift 1 (Traces): Before softening, the lasting impact/insight is extracted
+and preserved — surviving even when content fades to impressions.
+
+Shift 2 (Forgetting that teaches): When impact is extracted, a "lesson" engram
+is created (or reinforced). Lessons are procedural engrams with high stability
+that persist as accumulated wisdom. Forgetting feeds forward into learning.
+
+The original content is always preserved in content_at_encoding (immutable).
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from ..core.types import ConnectionRelation, EngramKind, SourceType
+
+if TYPE_CHECKING:
+    from ..store.sqlite_store import EngramStore
+
+
+# ── LLM Prompts (from Anima, verbatim) ──
+
+SOFTENER_PROMPT = """You are a memory softener. Given a sharp memory, rewrite it at lower resolution.
+
+Keep the emotional tone and core meaning. Remove specific timestamps, exact quotes, and precise details. Replace them with impressions and feelings. The result should feel like a memory that's naturally fading — the way a human remembers something from months ago. The gist remains. The specifics blur.
+
+Current sharpness: {current_sharpness}
+Target sharpness: {target_sharpness}
+
+Memory:
+{content}
+
+Write ONLY the softened version. Nothing else."""
+
+DEEP_SOFTENER_PROMPT = """Reduce this memory to its emotional essence. One or two phrases maximum. What feeling remains when all detail is gone?
+
+This is not a summary. It's an impression — like catching a scent that reminds you of something you can't quite place.
+
+Memory:
+{content}
+
+Write ONLY the impression. One or two phrases. Nothing else."""
+
+
+def run_softening_pass(
+    store: EngramStore,
+    config: dict[str, Any],
+    llm_client: Any | None,
+) -> dict[str, Any]:
+    """Rewrite memories that have dropped below the resolution threshold.
+
+    Args:
+        store: The engram store.
+        config: Configuration dict with softening parameters.
+        llm_client: LLM client with complete(prompt) -> str method.
+            If None, uses rule-based fallback.
+
+    Returns:
+        Statistics dict.
+    """
+    softening_threshold = config.get("softening_threshold", 0.15)
+    minimum_resolution = config.get("minimum_resolution", 0.1)
+    max_llm_calls = config.get("max_llm_calls_per_cycle", 50)
+
+    stats = {
+        "engrams_evaluated": 0,
+        "engrams_softened": 0,
+        "lessons_created": 0,
+        "lessons_reinforced": 0,
+        "llm_calls": 0,
+        "avg_resolution_before": 0.0,
+        "avg_resolution_after": 0.0,
+    }
+
+    # Get all engrams that could need softening (active or dormant, resolution > minimum)
+    all_engrams = store.get_active_engrams(limit=5000)
+
+    total_res_before = 0.0
+    total_res_after = 0.0
+    softened_count = 0
+
+    for engram in all_engrams:
+        if engram.resolution <= minimum_resolution:
+            continue  # Already at minimum resolution
+
+        stats["engrams_evaluated"] += 1
+        total_res_before += engram.resolution
+
+        # Determine target resolution from accessibility
+        target = _calculate_target_resolution(engram.accessibility)
+
+        if target >= engram.resolution:
+            total_res_after += engram.resolution
+            continue  # No softening needed — accessibility still high enough
+
+        # Hysteresis: only soften if significantly above target
+        if engram.resolution <= target + 0.15:
+            total_res_after += engram.resolution
+            continue
+
+        # Cap at minimum resolution
+        target = max(minimum_resolution, target)
+
+        # EXTRACT IMPACT before softening (if not already set)
+        # This is the key Shift 1 behavior: before content gets compressed,
+        # extract the lasting insight. Impact survives even when content fades.
+        if not engram.impact:
+            if llm_client and stats["llm_calls"] < max_llm_calls:
+                engram.impact = _extract_impact(engram.content, llm_client)
+                stats["llm_calls"] += 1
+            else:
+                engram.impact = _rule_based_impact(engram.content)
+
+        # SHIFT 2: Create or reinforce a lesson engram from the impact.
+        # Forgetting feeds forward — the distilled insight becomes persistent wisdom.
+        lesson_id = None
+        if engram.impact:
+            lesson_id = _create_or_reinforce_lesson(engram, store, stats)
+
+        # SOFTEN content (impact is preserved separately)
+        if llm_client and stats["llm_calls"] < max_llm_calls:
+            softened_content = _llm_soften(
+                engram.content, engram.resolution, target, llm_client
+            )
+            stats["llm_calls"] += 1
+        else:
+            softened_content = _rule_based_soften(engram.content, target)
+
+        # Version snapshot (preserve pre-softening state)
+        engram.add_version(reason="softening")
+
+        # Update content (impact is already set and untouched)
+        engram.content = softened_content
+        engram.resolution = round(target, 2)
+
+        # Connect source to its lesson via DISTILLED_INTO
+        if lesson_id:
+            engram.add_connection(
+                target_id=lesson_id,
+                relation=ConnectionRelation.DISTILLED_INTO,
+                strength=0.8,
+                formed_by="consolidation",
+            )
+
+        store.save_engram(engram)
+
+        total_res_after += engram.resolution
+        softened_count += 1
+        stats["engrams_softened"] += 1
+
+    if stats["engrams_evaluated"] > 0:
+        stats["avg_resolution_before"] = round(
+            total_res_before / stats["engrams_evaluated"], 3
+        )
+        stats["avg_resolution_after"] = round(
+            total_res_after / stats["engrams_evaluated"], 3
+        )
+
+    return stats
+
+
+def _calculate_target_resolution(accessibility: float) -> float:
+    """Map accessibility to appropriate resolution level.
+
+    Ported from Anima's calculate_target_sharpness.
+    """
+    if accessibility >= 0.7:
+        return 1.0
+    elif accessibility >= 0.4:
+        t = (accessibility - 0.4) / 0.3
+        return 0.4 + (0.6 * t)
+    elif accessibility >= 0.15:
+        t = (accessibility - 0.15) / 0.25
+        return 0.1 + (0.3 * t)
+    else:
+        return 0.0
+
+
+def _llm_soften(
+    content: str,
+    current_resolution: float,
+    target_resolution: float,
+    llm_client: Any,
+) -> str:
+    """Soften memory content using LLM."""
+    if target_resolution >= 0.4:
+        prompt = SOFTENER_PROMPT.format(
+            current_sharpness=current_resolution,
+            target_sharpness=target_resolution,
+            content=content,
+        )
+    else:
+        prompt = DEEP_SOFTENER_PROMPT.format(content=content)
+
+    try:
+        result = llm_client.complete(prompt)
+        return result.strip() if result else _rule_based_soften(content, target_resolution)
+    except Exception:
+        return _rule_based_soften(content, target_resolution)
+
+
+IMPACT_EXTRACTION_PROMPT = """What is the one lasting insight from this memory? Not what happened — what it taught. What understanding remains when the details are gone?
+
+Memory:
+{content}
+
+Write ONE sentence capturing the lasting impact. Nothing else."""
+
+
+def _extract_impact(content: str, llm_client: Any) -> str:
+    """Extract the lasting impact/lesson from content before it gets softened."""
+    prompt = IMPACT_EXTRACTION_PROMPT.format(content=content)
+    try:
+        result = llm_client.complete(prompt)
+        return result.strip() if result else _rule_based_impact(content)
+    except Exception:
+        return _rule_based_impact(content)
+
+
+def _rule_based_impact(content: str) -> str:
+    """Extract impact without LLM — take the core assertion.
+
+    Heuristic: the last substantive sentence is often the conclusion/lesson.
+    """
+    sentences = [s.strip() for s in content.split(".") if s.strip()]
+    # Take the last substantive sentence (often the insight)
+    for s in reversed(sentences):
+        if len(s) > 15:
+            return s
+    return content[:100] if content else ""
+
+
+def _create_or_reinforce_lesson(
+    engram: Any,
+    store: EngramStore,
+    stats: dict,
+) -> str | None:
+    """Create or reinforce a lesson engram from the impact of a softened memory.
+
+    Shift 2: Forgetting that teaches. The distilled insight from softening
+    becomes a persistent "lesson" engram with high stability. If a similar
+    lesson already exists, reinforce it instead of creating a duplicate.
+
+    Returns the lesson engram ID, or None if no lesson was created.
+    """
+    impact_text = engram.impact
+    if not impact_text or len(impact_text.strip()) < 10:
+        return None
+
+    # Search for existing similar lessons
+    words = [w for w in impact_text.split() if len(w) > 2 and w.isalnum()]
+    if not words:
+        return None
+
+    query = " OR ".join(f'"{w}"' for w in words[:6])
+    try:
+        existing = store.search_fts(query, limit=10)
+    except Exception:
+        existing = []
+
+    # Check if any existing engram is a lesson with similar content
+    for candidate in existing:
+        if candidate.id == engram.id:
+            continue
+        if "lesson" in candidate.tags or "distilled" in candidate.tags:
+            # Reinforce existing lesson
+            candidate.strength = min(1.0, candidate.strength + 0.1)
+            candidate.stability = min(1.0, candidate.stability + 0.05)
+            candidate.record_access()
+            store.save_engram(candidate)
+            stats["lessons_reinforced"] = stats.get("lessons_reinforced", 0) + 1
+            return candidate.id
+
+    # No existing lesson found — create a new one
+    from ..core.engram import Engram, MemorySource
+    lesson = Engram(
+        content=impact_text,
+        impact=impact_text,  # For lessons, impact IS the content
+        kind=EngramKind.PROCEDURAL,
+        tags=list(set(engram.tags + ["lesson", "distilled"])),
+        strength=0.8,
+        stability=0.8,  # High stability — lessons persist
+        source=MemorySource(
+            type=SourceType.REFLECTION,
+            confidence=engram.source.confidence,
+            confidence_source=engram.source.confidence_source,
+        ),
+        owner_agent_id=engram.owner_agent_id,
+    )
+
+    store.save_engram(lesson)
+    stats["lessons_created"] = stats.get("lessons_created", 0) + 1
+    return lesson.id
+
+
+def _rule_based_soften(content: str, target_resolution: float) -> str:
+    """Soften memory without LLM — rule-based fallback."""
+    if target_resolution >= 0.4:
+        # Keep first sentence, blur the rest
+        sentences = content.split(".")
+        first = sentences[0].strip() if sentences else content[:50]
+        return f"{first}... [details faded]"
+    else:
+        # Deep impression: just the emotional residue
+        words = content.split()
+        key_word = words[0] if words else "something"
+        return f"An impression related to {key_word}... [faded]"

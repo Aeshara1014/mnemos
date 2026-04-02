@@ -1,0 +1,294 @@
+"""
+CLI entry point for Mnemos.
+
+Commands:
+    mnemos init                  Initialize a new memory database
+    mnemos serve                 Start MCP server (stdio mode)
+    mnemos inspect ID            Inspect a specific engram
+    mnemos stats                 Show memory statistics
+    mnemos search QUERY          Search memories
+    mnemos consolidate [--deep]  Run a consolidation cycle
+    mnemos export [--workspace]  Export workspace files (MEMORY.md, etc.)
+    mnemos setup-openclaw        Register cron jobs for OpenClaw
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Main CLI entry point."""
+    parser = argparse.ArgumentParser(
+        prog="mnemos",
+        description="Mnemos: Living Memory Architecture for Autonomous AI Agents",
+    )
+    parser.add_argument(
+        "--db-path",
+        default="~/.mnemos/memory.db",
+        help="Path to the SQLite database (default: ~/.mnemos/memory.db)",
+    )
+    parser.add_argument(
+        "--agent-id",
+        default="default",
+        help="Agent identifier (default: 'default')",
+    )
+
+    sub = parser.add_subparsers(dest="command", help="Available commands")
+
+    # ── init ──
+    sub.add_parser("init", help="Initialize a new memory database")
+
+    # ── serve ──
+    sub.add_parser("serve", help="Start MCP server (stdio mode)")
+
+    # ── inspect ──
+    p_inspect = sub.add_parser("inspect", help="Inspect a specific engram")
+    p_inspect.add_argument("engram_id", help="The engram ID to inspect")
+
+    # ── stats ──
+    sub.add_parser("stats", help="Show memory statistics")
+
+    # ── search ──
+    p_search = sub.add_parser("search", help="Search memories")
+    p_search.add_argument("query", help="Search query")
+    p_search.add_argument("-n", "--max-results", type=int, default=10)
+
+    # ── consolidate ──
+    p_cons = sub.add_parser("consolidate", help="Run a consolidation cycle")
+    p_cons.add_argument("--deep", action="store_true", help="Run deep cycle")
+
+    # ── export ──
+    p_export = sub.add_parser("export", help="Export workspace files")
+    p_export.add_argument(
+        "--workspace", default=".", help="Output directory (default: current dir)"
+    )
+
+    # ── setup-openclaw ──
+    p_setup = sub.add_parser("setup-openclaw", help="Register OpenClaw cron jobs")
+    p_setup.add_argument("--agent", default="main", help="OpenClaw agent ID")
+    p_setup.add_argument("--dry-run", action="store_true", help="Show what would be registered")
+
+    args = parser.parse_args(argv)
+
+    if args.command is None:
+        parser.print_help()
+        return 0
+
+    handlers = {
+        "init": _cmd_init,
+        "serve": _cmd_serve,
+        "inspect": _cmd_inspect,
+        "stats": _cmd_stats,
+        "search": _cmd_search,
+        "consolidate": _cmd_consolidate,
+        "export": _cmd_export,
+        "setup-openclaw": _cmd_setup_openclaw,
+    }
+
+    handler = handlers.get(args.command)
+    if handler:
+        return handler(args)
+    parser.print_help()
+    return 1
+
+
+def _get_store(args: argparse.Namespace):
+    """Create or open the engram store."""
+    from .store.sqlite_store import EngramStore
+    return EngramStore(args.db_path)
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    """Initialize a new memory database."""
+    db_path = Path(args.db_path).expanduser()
+    if db_path.exists():
+        print(f"Database already exists: {db_path}")
+        print("Mnemos is ready.")
+        return 0
+
+    store = _get_store(args)
+    store.close()
+    print(f"Initialized Mnemos database: {db_path}")
+    print("Run 'mnemos stats' to verify.")
+    return 0
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    """Start MCP server."""
+    try:
+        from .mcp_server import run_server
+        run_server(db_path=args.db_path)
+        return 0
+    except ImportError:
+        print("MCP server requires the 'mcp' package: pip install mcp", file=sys.stderr)
+        return 1
+
+
+def _cmd_inspect(args: argparse.Namespace) -> int:
+    """Inspect a specific engram."""
+    store = _get_store(args)
+    engram = store.get_engram(args.engram_id)
+    if engram is None:
+        print(f"Engram not found: {args.engram_id}", file=sys.stderr)
+        store.close()
+        return 1
+
+    print(f"ID:            {engram.id}")
+    print(f"Content:       {engram.content}")
+    print(f"Kind:          {engram.kind}")
+    print(f"Tags:          {', '.join(engram.tags) or '(none)'}")
+    print(f"State:         {engram.state}")
+    print(f"Resolution:    {engram.resolution}")
+    print(f"Strength:      {engram.strength:.4f}")
+    print(f"Stability:     {engram.stability:.4f}")
+    print(f"Accessibility: {engram.accessibility:.4f}")
+    print(f"Confidence:    {engram.source.confidence} ({engram.source.confidence_source})")
+    print(f"Created:       {engram.created_at}")
+    print(f"Last accessed: {engram.last_accessed}")
+    print(f"Access count:  {engram.access_count}")
+    print(f"Reconsolidations: {engram.reconsolidation_count}")
+    print(f"Connections:   {len(engram.connections)}")
+    for c in engram.connections:
+        print(f"  → {c.target_id[:25]}... ({c.relation}, strength={c.strength:.2f})")
+    print(f"Versions:      {len(engram.versions)}")
+    for v in engram.versions:
+        print(f"  v{v.version_num}: {v.change_reason} at {v.changed_at}")
+    if engram.content != engram.content_at_encoding:
+        print(f"Original:      {engram.content_at_encoding[:100]}...")
+
+    store.close()
+    return 0
+
+
+def _cmd_stats(args: argparse.Namespace) -> int:
+    """Show memory statistics."""
+    store = _get_store(args)
+    stats = store.get_stats(args.agent_id)
+
+    print(f"Mnemos Stats (agent: {args.agent_id})")
+    print(f"{'─' * 40}")
+    print(f"Active engrams:      {stats.get('engrams_active', 0)}")
+    print(f"Dormant engrams:     {stats.get('engrams_dormant', 0)}")
+    print(f"Archived engrams:    {stats.get('archived', 0)}")
+    print(f"Connections:         {stats.get('connections', 0)}")
+    print(f"Active beliefs:      {stats.get('beliefs_active', 0)}")
+    print(f"Reconsolidations:    {stats.get('reconsolidation_events', 0)}")
+    if "accessibility_avg" in stats:
+        print(f"Avg accessibility:   {stats['accessibility_avg']:.3f}")
+        print(f"Min accessibility:   {stats['accessibility_min']:.3f}")
+        print(f"Max accessibility:   {stats['accessibility_max']:.3f}")
+
+    store.close()
+    return 0
+
+
+def _cmd_search(args: argparse.Namespace) -> int:
+    """Search memories."""
+    store = _get_store(args)
+    from .retrieval.reactive import ReactiveRetriever
+
+    retriever = ReactiveRetriever(store)
+    results = retriever.retrieve(
+        cue=args.query,
+        agent_id=args.agent_id,
+        max_results=args.max_results,
+    )
+
+    if not results:
+        print("No memories found.")
+        store.close()
+        return 0
+
+    for r in results:
+        content = r.engram.content
+        if len(content) > 80:
+            content = content[:77] + "..."
+        print(f"[{r.score:.3f}] {content}")
+        print(f"         id={r.engram.id[:25]}... kind={r.engram.kind} path={r.retrieval_path}")
+
+    store.close()
+    return 0
+
+
+def _cmd_consolidate(args: argparse.Namespace) -> int:
+    """Run a consolidation cycle."""
+    store = _get_store(args)
+    from .consolidation.daemon import ConsolidationDaemon
+    from .llm import create_client
+
+    llm_client = create_client()
+    daemon = ConsolidationDaemon(store=store, config={}, llm_client=llm_client)
+    label = "deep" if args.deep else "shallow"
+    print(f"Running {label} consolidation...")
+
+    stats = daemon.run_cycle(deep=args.deep, agent_id=args.agent_id)
+
+    print(f"Passes: {', '.join(stats.get('passes_run', []))}")
+    if "decay" in stats:
+        d = stats["decay"]
+        print(f"  Decay: {d.get('engrams_decayed', 0)} decayed, {d.get('engrams_archived', 0)} archived")
+    if "connection_discovery" in stats:
+        cd = stats["connection_discovery"]
+        print(f"  Connections: {cd.get('connections_created', 0)} created, {cd.get('connections_strengthened', 0)} strengthened")
+    if "softening" in stats:
+        s = stats["softening"]
+        print(f"  Softening: {s.get('engrams_softened', 0)} softened")
+    if "belief_review" in stats:
+        br = stats["belief_review"]
+        print(f"  Beliefs: {br.get('beliefs_reviewed', 0)} reviewed")
+    if "reflection" in stats:
+        ref = stats["reflection"]
+        print(f"  Reflection: {ref.get('thoughts_generated', 0)} thoughts, narrative={'updated' if ref.get('narrative_updated') else 'unchanged'}")
+
+    # Check for errors
+    errors = [k for k in stats if k.endswith("_error")]
+    for e in errors:
+        print(f"  ERROR ({e}): {stats[e]}", file=sys.stderr)
+
+    store.close()
+    return 0
+
+
+def _cmd_export(args: argparse.Namespace) -> int:
+    """Export workspace files."""
+    store = _get_store(args)
+    from .interface.openclaw_export import OpenClawExporter
+
+    exporter = OpenClawExporter(store, args.workspace)
+    result = exporter.export_all(args.agent_id)
+
+    for path, size in result.items():
+        print(f"  Wrote {path} ({size} bytes)")
+
+    store.close()
+    return 0
+
+
+def _cmd_setup_openclaw(args: argparse.Namespace) -> int:
+    """Register OpenClaw cron jobs."""
+    from .openclaw_cron import generate_cron_jobs, install_cron_jobs
+
+    jobs = generate_cron_jobs(agent_id=args.agent)
+
+    if args.dry_run:
+        print("Would register the following cron jobs:")
+        for job in jobs:
+            print(f"  {job['name']}: {job['schedule']['expr']} → {job['payload']['message'][:60]}...")
+        return 0
+
+    result = install_cron_jobs(jobs)
+    if result["success"]:
+        print(f"Registered {result['jobs_added']} cron jobs for agent '{args.agent}'")
+    else:
+        print(f"Failed: {result['error']}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
