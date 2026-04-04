@@ -8,6 +8,8 @@ Jobs:
 - mnemos-shallow: Every 4h — shallow consolidation (decay + connections)
 - mnemos-deep: Daily 3am — deep consolidation (all passes)
 - mnemos-export: Every 2h — export updated workspace files
+- mnemos-substrate-tick: Every 4h — cognitive substrate tick (handlers, modulators)
+- mnemos-session-indexer: Every 30min — index recent conversation sessions
 """
 
 from __future__ import annotations
@@ -90,6 +92,38 @@ def generate_cron_jobs(
                     "This updates MEMORY.md, daily logs, and topic files "
                     "so they're fresh for the next conversation."
                 ),
+            },
+        },
+        {
+            "id": f"mnemos-substrate-{uuid.uuid4().hex[:12]}",
+            "agentId": agent_id,
+            "name": "mnemos-substrate-tick",
+            "enabled": True,
+            "schedule": {
+                "kind": "cron",
+                "expr": "15 */4 * * *",  # Every 4 hours at :15 (offset from consolidation)
+                "tz": timezone,
+            },
+            "sessionTarget": "isolated",
+            "payload": {
+                "kind": "command",
+                "message": "mnemos substrate-tick",
+            },
+        },
+        {
+            "id": f"mnemos-indexer-{uuid.uuid4().hex[:12]}",
+            "agentId": agent_id,
+            "name": "mnemos-session-indexer",
+            "enabled": True,
+            "schedule": {
+                "kind": "cron",
+                "expr": "*/30 * * * *",  # Every 30 minutes
+                "tz": timezone,
+            },
+            "sessionTarget": "isolated",
+            "payload": {
+                "kind": "command",
+                "message": "mnemos index",
             },
         },
     ]

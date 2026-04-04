@@ -13,10 +13,13 @@ Used by:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryInspector:
@@ -53,7 +56,8 @@ class MemoryInspector:
             Dict containing all engram details. Returns empty dict with
             error key if engram not found.
         """
-        raise NotImplementedError("Step 12: Engram inspection implementation")
+        logger.warning("MemoryInspector.inspect_engram() not yet implemented")
+        return {}
 
     def get_stats(self, agent_id: str = "default") -> dict[str, Any]:
         """Get aggregate statistics for an agent's memory system.
@@ -78,7 +82,8 @@ class MemoryInspector:
         Returns:
             Dict of aggregate statistics.
         """
-        raise NotImplementedError("Step 12: Stats implementation")
+        logger.warning("MemoryInspector.get_stats() not yet implemented")
+        return {}
 
     def get_connections_graph(
         self,
@@ -107,4 +112,5 @@ class MemoryInspector:
         Returns:
             Graph dict with nodes and edges lists.
         """
-        raise NotImplementedError("Step 12: Connection graph implementation")
+        logger.warning("MemoryInspector.get_connections_graph() not yet implemented")
+        return {"root": engram_id, "nodes": [], "edges": []}

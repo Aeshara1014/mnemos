@@ -419,10 +419,10 @@ class EngramStore:
             for r in rows
         ]
 
-    def save_connection(self, source_id: str, connection) -> None:
+    def update_connection(self, source_id: str, connection) -> None:
         """Update an existing connection's relation, strength, or formed_by."""
         self._conn.execute(
-            """UPDATE connections 
+            """UPDATE connections
                SET relation = ?, strength = ?, formed_by = ?
                WHERE source_id = ? AND target_id = ?""",
             (
@@ -459,7 +459,7 @@ class EngramStore:
         Returns:
             List of Engram objects, most recent first.
         """
-        query = "SELECT * FROM engrams WHERE archived_at IS NULL"
+        query = "SELECT * FROM engrams WHERE state = 'active'"
         params: list = []
 
         if agent_id:

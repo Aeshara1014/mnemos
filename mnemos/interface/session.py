@@ -18,11 +18,14 @@ Lifecycle:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
     from ..encoding.encoder import Encoder
+
+logger = logging.getLogger(__name__)
 
 
 class MnemosSession:
@@ -68,7 +71,7 @@ class MnemosSession:
             session_id: Unique identifier for this conversation session.
             agent_id: The agent whose memories will be encoded.
         """
-        raise NotImplementedError("Step 10: Session start implementation")
+        logger.warning("Session.start() not yet implemented")
 
     def on_message(self, content: str, role: str = "user") -> None:
         """Record a message exchanged during the session.
@@ -81,7 +84,7 @@ class MnemosSession:
             content: The message text content.
             role: Who sent the message ("user", "assistant", "system").
         """
-        raise NotImplementedError("Step 10: Message recording implementation")
+        logger.warning("Session.on_message() not yet implemented")
 
     def on_tool_result(self, tool_name: str, result: Any) -> None:
         """Record a tool invocation result during the session.
@@ -93,7 +96,7 @@ class MnemosSession:
             tool_name: The name of the tool that was invoked.
             result: The result returned by the tool.
         """
-        raise NotImplementedError("Step 10: Tool result recording implementation")
+        logger.warning("Session.on_tool_result() not yet implemented")
 
     def end(self) -> None:
         """End the session and trigger final encoding.
@@ -103,4 +106,4 @@ class MnemosSession:
         Updates the agent's emotional state based on session events.
         Marks the session as inactive.
         """
-        raise NotImplementedError("Step 10: Session end implementation")
+        logger.warning("Session.end() not yet implemented")

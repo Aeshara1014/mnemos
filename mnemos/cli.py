@@ -72,6 +72,23 @@ def main(argv: list[str] | None = None) -> int:
     p_setup.add_argument("--agent", default="main", help="OpenClaw agent ID")
     p_setup.add_argument("--dry-run", action="store_true", help="Show what would be registered")
 
+    # ── substrate-tick ──
+    sub.add_parser("substrate-tick", help="Run one cognitive substrate tick")
+
+    # ── index ──
+    p_index = sub.add_parser("index", help="Run session indexer")
+    p_index.add_argument("--backfill", action="store_true", help="Index last 24h of sessions")
+
+    # ── bridge ──
+    p_bridge = sub.add_parser("bridge", help="Direct memory operations")
+    bridge_sub = p_bridge.add_subparsers(dest="bridge_command")
+    bridge_sub.add_parser("status", help="Quick memory status")
+    p_br_recall = bridge_sub.add_parser("recall", help="Retrieve memories")
+    p_br_recall.add_argument("query", help="Search query")
+    p_br_remember = bridge_sub.add_parser("remember", help="Encode a memory")
+    p_br_remember.add_argument("content", help="Memory content")
+    p_br_remember.add_argument("--impact", default="", help="What it meant")
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -87,6 +104,9 @@ def main(argv: list[str] | None = None) -> int:
         "consolidate": _cmd_consolidate,
         "export": _cmd_export,
         "setup-openclaw": _cmd_setup_openclaw,
+        "substrate-tick": _cmd_substrate_tick,
+        "index": _cmd_index,
+        "bridge": _cmd_bridge,
     }
 
     handler = handlers.get(args.command)
@@ -287,6 +307,73 @@ def _cmd_setup_openclaw(args: argparse.Namespace) -> int:
         print(f"Failed: {result['error']}", file=sys.stderr)
         return 1
 
+    return 0
+
+
+def _cmd_substrate_tick(args: argparse.Namespace) -> int:
+    """Run one cognitive substrate tick."""
+    try:
+        from .substrate.tick import Substrate
+        from .substrate.config import SubstrateConfig
+
+        config = SubstrateConfig(
+            agent_id=args.agent_id,
+            db_path=args.db_path,
+        )
+        substrate = Substrate(config)
+        print(f"Running substrate tick (agent: {args.agent_id})...")
+        result = substrate.tick()
+        print(f"Tick complete: {json.dumps(result, indent=2, default=str)}")
+        return 0
+    except ImportError as e:
+        print(f"Substrate not available: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Substrate tick failed: {e}", file=sys.stderr)
+        return 1
+
+
+def _cmd_index(args: argparse.Namespace) -> int:
+    """Run session indexer."""
+    try:
+        from .indexer.session_indexer import SessionIndexer
+
+        indexer = SessionIndexer(
+            agent_id=args.agent_id,
+            db_path=args.db_path,
+        )
+        if args.backfill:
+            print("Running backfill (last 24h)...")
+            result = indexer.backfill()
+        else:
+            print("Running indexer...")
+            result = indexer.run()
+        print(f"Indexed {result.get('sessions_processed', 0)} sessions, "
+              f"{result.get('memories_created', 0)} memories created")
+        return 0
+    except ImportError as e:
+        print(f"Indexer not available: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Indexer failed: {e}", file=sys.stderr)
+        return 1
+
+
+def _cmd_bridge(args: argparse.Namespace) -> int:
+    """Direct memory operations via bridge."""
+    from .bridge import MnemosBridge
+
+    bridge = MnemosBridge(agent_id=args.agent_id, db_path=args.db_path)
+
+    if args.bridge_command == "status":
+        print(bridge.status())
+    elif args.bridge_command == "recall":
+        print(bridge.recall(args.query))
+    elif args.bridge_command == "remember":
+        print(bridge.remember(args.content, impact=args.impact))
+    else:
+        print("Usage: mnemos bridge {status|recall|remember}", file=sys.stderr)
+        return 1
     return 0
 
 

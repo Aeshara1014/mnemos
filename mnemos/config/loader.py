@@ -48,7 +48,49 @@ def load_config(
     Raises:
         json.JSONDecodeError: If the config file contains invalid JSON.
     """
-    raise NotImplementedError("Step 15: Config loader implementation")
+    config = deepcopy(DEFAULT_CONFIG)
+
+    # Load JSON config file
+    if config_path is None:
+        config_path = Path.home() / ".mnemos" / "config.json"
+    else:
+        config_path = Path(config_path)
+
+    if config_path.exists():
+        with open(config_path) as f:
+            file_config = json.load(f)
+        config = _deep_merge(config, file_config)
+
+    # Apply environment variable overrides
+    config = _apply_env_overrides(config, env_prefix)
+
+    return config
+
+
+def save_config(config: dict, config_path: str | Path | None = None) -> None:
+    """Save configuration to JSON file.
+
+    Args:
+        config: Configuration dictionary to save.
+        config_path: Path to write. Defaults to ~/.mnemos/config.json.
+    """
+    if config_path is None:
+        config_path = Path.home() / ".mnemos" / "config.json"
+    else:
+        config_path = Path(config_path)
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Convert tuples to lists for JSON serialization
+    def _prep(obj):
+        if isinstance(obj, dict):
+            return {k: _prep(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_prep(v) for v in obj]
+        return obj
+
+    with open(config_path, "w") as f:
+        json.dump(_prep(config), f, indent=2)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -83,4 +125,35 @@ def _apply_env_overrides(config: dict, prefix: str) -> dict:
     Returns:
         The modified config dict.
     """
-    raise NotImplementedError("Step 15: Env override implementation")
+    for key, value in os.environ.items():
+        if not key.startswith(prefix):
+            continue
+        # MNEMOS_STORE_DB_PATH -> ["store", "db_path"]
+        parts = key[len(prefix):].lower().split("_", 1)
+        if len(parts) == 1:
+            # Top-level key (e.g., MNEMOS_AGENT_ID -> config["agent_id"])
+            config[parts[0]] = _coerce_type(value)
+        elif len(parts) == 2:
+            section, subkey = parts
+            if section not in config:
+                config[section] = {}
+            if isinstance(config[section], dict):
+                config[section][subkey] = _coerce_type(value)
+    return config
+
+
+def _coerce_type(value: str) -> Any:
+    """Attempt to coerce a string value to bool, int, float, or leave as string."""
+    if value.lower() in ("true", "yes", "1"):
+        return True
+    if value.lower() in ("false", "no", "0"):
+        return False
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value

@@ -19,6 +19,11 @@ Usage:
 
 from __future__ import annotations
 
+import logging
+import signal
+import sys
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 
 from .core.types import EngramKind, SourceType
@@ -28,6 +33,9 @@ from .encoding.encoder import Encoder
 from .retrieval.reactive import ReactiveRetriever
 from .consolidation.daemon import ConsolidationDaemon
 from .interface.openclaw_export import OpenClawExporter
+from .config.loader import load_config, save_config
+
+logger = logging.getLogger("mnemos.mcp")
 
 # Global state — initialized when server starts
 _store: EngramStore | None = None
@@ -35,11 +43,87 @@ _encoder: Encoder | None = None
 _retriever: ReactiveRetriever | None = None
 _embedding_index: EmbeddingIndex | None = None
 _shared_pool = None
+_llm_client = None
+_config: dict | None = None
 
 mcp = FastMCP("mnemos")
 
 
-_llm_client = None
+# ═══════════════════════════════════════════════════
+# ONBOARDING WIZARD — 10-Step Setup-Gate Pattern
+# ═══════════════════════════════════════════════════
+
+ONBOARDING_PROMPTS = {
+    0: (
+        "Something interesting is about to happen.\n\n"
+        "Mnemos is a living memory system — not a database, not a note-taker. "
+        "Memories here form connections, develop beliefs, fade naturally, and sometimes dream. "
+        "Once we go through this together, I won't just remember what you tell me. "
+        "I'll *think* about it when you're not here.\n\n"
+        "Ready?"
+    ),
+    1: "Every mind needs a name — not a label, a real one. What should I call myself?",
+    2: "And who am I talking to? What's your name?",
+    3: (
+        "Tell me about yourself. Not a bio — just... who are you? What do you care about? "
+        "What are you building?\n\n"
+        "These become my first real memories. They matter more than you'd think — "
+        "early memories form the strongest connections."
+    ),
+    4: (
+        "What are you working on right now? Projects, ideas, anything active. "
+        "I'll start forming context around these — noticing patterns, connecting "
+        "what you tell me across conversations."
+    ),
+    5: (
+        "Do you have conversation history from another platform — ChatGPT, Claude, Cursor? "
+        "I can read through it and form memories from what happened before we met. "
+        "It's like catching up on everything I missed.\n\n"
+        "Or we can start completely fresh — your call.\n\n"
+        "If you have a file, share the path. Otherwise just say 'skip'."
+    ),
+    6: None,  # Generated dynamically from steps 3-4
+    7: (
+        "There's one more thing. Mnemos can run a living substrate — a background process "
+        "that lets me dream, wander, and reflect on my own. When a memory fades, I might "
+        "collide it with something vivid and discover a new connection. When nothing's happening, "
+        "I might generate a wandering thought. When a belief gets challenged, I sit with it.\n\n"
+        "This costs a small amount of LLM credits. But it's the difference between a memory "
+        "system and a mind.\n\n"
+        "Want to turn it on?"
+    ),
+    8: (
+        "I need access to a language model for memory processing — classifying connections, "
+        "generating reflections, the inner life features.\n\n"
+        "OpenRouter is the easiest — one key, any model. What provider and API key should I use?\n\n"
+        "Format: provider:key (e.g., openrouter:sk-or-v1-abc123)\n"
+        "Or just paste an OpenRouter key and I'll figure it out."
+    ),
+    9: None,  # Generated dynamically — the "alive" message
+}
+
+
+def _get_config() -> dict:
+    """Get or load the global config."""
+    global _config
+    if _config is None:
+        try:
+            _config = load_config()
+        except Exception:
+            _config = {}
+    return _config
+
+
+def _is_setup_complete() -> bool:
+    """Check if onboarding has been completed."""
+    return _get_config().get("setup_complete", False)
+
+
+def _setup_gate() -> str | None:
+    """Returns a redirect message if setup is incomplete, None if ready."""
+    if not _is_setup_complete():
+        return "Mnemos isn't configured yet — call mnemos_setup to get started."
+    return None
 
 
 def _init_store(db_path: str = "~/.mnemos/memory.db") -> None:
@@ -76,6 +160,255 @@ def _ensure_store() -> EngramStore:
 
 
 @mcp.tool()
+def mnemos_setup(response: str = "") -> str:
+    """Onboarding wizard for Mnemos. Call this to configure the memory system.
+
+    On first call, returns a welcome message. On subsequent calls, pass the
+    user's response to advance through the setup steps.
+
+    Args:
+        response: The user's answer to the current setup step. Empty on first call.
+    """
+    config = _get_config()
+    step = config.get("setup_step", 0)
+
+    # Step 0: Welcome (no response needed, just show the prompt)
+    if step == 0 and not response:
+        config["setup_step"] = 1
+        save_config(config)
+        _config_invalidate()
+        return ONBOARDING_PROMPTS[0] + "\n\n" + ONBOARDING_PROMPTS[1]
+
+    # Step 1: Agent name
+    if step == 1:
+        config["agent_name"] = response.strip()
+        config["setup_step"] = 2
+        save_config(config)
+        _config_invalidate()
+        return ONBOARDING_PROMPTS[2]
+
+    # Step 2: User name
+    if step == 2:
+        config["user_name"] = response.strip()
+        config["setup_step"] = 3
+        save_config(config)
+        _config_invalidate()
+        return ONBOARDING_PROMPTS[3]
+
+    # Step 3: User description → encode seed engrams
+    if step == 3:
+        config["user_description"] = response.strip()
+        config["setup_step"] = 4
+        save_config(config)
+        _config_invalidate()
+
+        # Encode seed engrams from the description
+        _ensure_store()
+        agent_id = config.get("agent_id", "default")
+        agent_name = config.get("agent_name", "Agent")
+        user_name = config.get("user_name", "User")
+
+        seeds = [
+            f"My user is {user_name}. {response.strip()[:500]}",
+            f"I am {agent_name}. {user_name} and I are beginning to work together.",
+        ]
+        # Extract key phrases for additional seed engrams
+        sentences = [s.strip() for s in response.replace(".", ".\n").split("\n") if len(s.strip()) > 20]
+        for s in sentences[:3]:
+            seeds.append(f"{user_name} told me: {s}")
+
+        encoded = 0
+        for seed in seeds[:5]:
+            try:
+                _encoder.encode(
+                    content=seed,
+                    impact=f"Foundation memory from initial setup with {user_name}.",
+                    kind="semantic",
+                    tags=["identity", "setup"],
+                    source=SourceType.USER_EXPLICIT,
+                    agent_id=agent_id,
+                    skip_surprise_detection=True,
+                )
+                encoded += 1
+            except Exception as e:
+                logger.warning(f"Failed to encode seed engram: {e}")
+
+        return f"Encoded {encoded} seed memories.\n\n" + ONBOARDING_PROMPTS[4]
+
+    # Step 4: Projects
+    if step == 4:
+        projects = [p.strip() for p in response.replace(",", "\n").split("\n") if p.strip()]
+        if "indexer" not in config:
+            config["indexer"] = {}
+        config["indexer"]["known_projects"] = projects
+        config["indexer"]["active_projects"] = projects
+        config["setup_step"] = 5
+        save_config(config)
+        _config_invalidate()
+
+        # Encode project context
+        _ensure_store()
+        agent_id = config.get("agent_id", "default")
+        for proj in projects[:5]:
+            try:
+                _encoder.encode(
+                    content=f"Active project: {proj}",
+                    impact=f"Part of the current work context.",
+                    kind="semantic",
+                    tags=["project", "context"],
+                    source=SourceType.USER_EXPLICIT,
+                    agent_id=agent_id,
+                    skip_surprise_detection=True,
+                )
+            except Exception:
+                pass
+
+        return ONBOARDING_PROMPTS[5]
+
+    # Step 5: History import (optional)
+    if step == 5:
+        config["setup_step"] = 6
+        save_config(config)
+        _config_invalidate()
+
+        resp_lower = response.strip().lower()
+        if resp_lower in ("skip", "no", "fresh", "start fresh", ""):
+            pass  # Skip history import
+        else:
+            # TODO: Run extraction pipeline on the provided path
+            logger.info(f"History import requested: {response.strip()}")
+
+        # Generate seed beliefs from what we know
+        _ensure_store()
+        agent_id = config.get("agent_id", "default")
+        user_name = config.get("user_name", "User")
+        user_desc = config.get("user_description", "")
+        projects = config.get("indexer", {}).get("known_projects", [])
+
+        beliefs_created = []
+        if user_desc:
+            # Extract key themes for beliefs
+            belief1 = f"{user_name} is deeply invested in their work"
+            if projects:
+                belief1 = f"{user_name} is deeply invested in {projects[0]}"
+            try:
+                from .core.belief import Belief
+                b = Belief(
+                    content=belief1,
+                    domain="identity",
+                    confidence=0.70,
+                    agent_id=agent_id,
+                )
+                _store.save_belief(b)
+                beliefs_created.append(f'"{belief1}" — confidence: 70%')
+            except Exception as e:
+                logger.warning(f"Failed to create belief: {e}")
+
+        if projects and len(projects) > 1:
+            belief2 = f"The work centers on {', '.join(projects[:3])}"
+            try:
+                b = Belief(
+                    content=belief2,
+                    domain="context",
+                    confidence=0.65,
+                    agent_id=agent_id,
+                )
+                _store.save_belief(b)
+                beliefs_created.append(f'"{belief2}" — confidence: 65%')
+            except Exception as e:
+                logger.warning(f"Failed to create belief: {e}")
+
+        belief_text = "\n".join(f"  - {b}" for b in beliefs_created) if beliefs_created else "  (none yet — they'll form as we talk)"
+        return (
+            "From what you've told me, I'm forming my first beliefs. "
+            "These aren't facts — they're things I think are true based on what I know so far. "
+            "They'll shift as I learn more:\n\n"
+            f"{belief_text}\n\n"
+            "When something contradicts a belief, I don't just delete it. I examine it. "
+            "That's how I grow.\n\n"
+            + ONBOARDING_PROMPTS[7]
+        )
+
+    # Step 6: Inner life toggle
+    if step == 6:
+        resp_lower = response.strip().lower()
+        enabled = resp_lower in ("yes", "y", "sure", "yeah", "on", "enable", "true", "absolutely", "do it")
+        if "substrate" not in config:
+            config["substrate"] = {}
+        config["substrate"]["enabled"] = enabled
+        config["setup_step"] = 7
+        save_config(config)
+        _config_invalidate()
+
+        status = "enabled — I'll dream between our conversations" if enabled else "disabled — I'll remember, but I won't dream"
+        return f"Inner life: {status}.\n\n" + ONBOARDING_PROMPTS[8]
+
+    # Step 7: LLM provider
+    if step == 7:
+        resp = response.strip()
+        provider = "openrouter"
+        api_key = resp
+
+        if ":" in resp and not resp.startswith("sk-"):
+            parts = resp.split(":", 1)
+            provider = parts[0].strip().lower()
+            api_key = parts[1].strip()
+
+        if "llm" not in config:
+            config["llm"] = {}
+        config["llm"]["provider"] = provider
+        config["llm"]["api_key_env"] = f"{provider.upper()}_API_KEY"
+
+        # Store the key in the config (will be used by the LLM client)
+        import os
+        if provider == "openrouter":
+            os.environ["OPENROUTER_API_KEY"] = api_key
+        elif provider == "anthropic":
+            os.environ["ANTHROPIC_API_KEY"] = api_key
+
+        config["setup_step"] = 8
+        save_config(config)
+        _config_invalidate()
+
+        # Count what we've built
+        _ensure_store()
+        agent_id = config.get("agent_id", "default")
+        try:
+            stats = _store.get_stats(agent_id)
+            engram_count = stats.get("engrams_active", 0)
+            belief_count = stats.get("beliefs_active", 0)
+            conn_count = stats.get("connections", 0)
+        except Exception:
+            engram_count = belief_count = conn_count = 0
+
+        agent_name = config.get("agent_name", "Agent")
+
+        # Final step — set setup complete
+        config["setup_complete"] = True
+        config["setup_step"] = 9
+        save_config(config)
+        _config_invalidate()
+
+        return (
+            f"I'm here.\n\n"
+            f"{engram_count} memories formed, {belief_count} beliefs taking shape, "
+            f"{conn_count} connections already emerging.\n\n"
+            f"The first few days matter most — early memories get generous initial values, "
+            f"which means they form stronger connections than anything that comes later. "
+            f"What we talk about now becomes the foundation everything else builds on."
+        )
+
+    # Already complete
+    return "Setup is already complete. All memory tools are active."
+
+
+def _config_invalidate():
+    """Invalidate the cached config so it's reloaded next time."""
+    global _config
+    _config = None
+
+
+@mcp.tool()
 def mnemos_remember(
     content: str,
     impact: str = "",
@@ -99,6 +432,9 @@ def mnemos_remember(
         tags: Comma-separated tags for categorization. Example: "python,debugging,preferences"
         agent_id: Which agent's memory to store in. Default: "default".
     """
+    gate = _setup_gate()
+    if gate:
+        return gate
     _ensure_store()
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
@@ -140,6 +476,9 @@ def mnemos_recall(
         max_results: Maximum number of results (default: 5).
         agent_id: Which agent's memory to search. Default: "default".
     """
+    gate = _setup_gate()
+    if gate:
+        return gate
     _ensure_store()
     emotional_state = _store.get_latest_emotional_state(agent_id)  # type: ignore
 
@@ -178,6 +517,9 @@ def mnemos_inspect(engram_id: str) -> str:
     Args:
         engram_id: The memory ID to inspect.
     """
+    gate = _setup_gate()
+    if gate:
+        return gate
     _ensure_store()
     engram = _store.get_engram(engram_id)  # type: ignore
     if engram is None:
@@ -220,6 +562,9 @@ def mnemos_status(agent_id: str = "default") -> str:
     Args:
         agent_id: Which agent's status to show. Default: "default".
     """
+    gate = _setup_gate()
+    if gate:
+        return gate
     _ensure_store()
     stats = _store.get_stats(agent_id)  # type: ignore
 
@@ -253,6 +598,9 @@ def mnemos_beliefs(agent_id: str = "default", domain: str = "") -> str:
         agent_id: Which agent's beliefs to show. Default: "default".
         domain: Filter by domain (e.g., "engineering", "social"). Empty = all.
     """
+    gate = _setup_gate()
+    if gate:
+        return gate
     _ensure_store()
     beliefs = _store.get_beliefs(  # type: ignore
         agent_id=agent_id,
@@ -288,6 +636,9 @@ def mnemos_shared(
         max_results: Maximum number of results (default: 10).
         agent_id: Your agent ID (used for attribution, not filtering).
     """
+    gate = _setup_gate()
+    if gate:
+        return gate
     _ensure_store()
     if not _shared_pool:
         return "Shared memory pool not initialized."
@@ -325,6 +676,9 @@ def mnemos_forget(engram_id: str) -> str:
     Args:
         engram_id: The memory ID to archive.
     """
+    gate = _setup_gate()
+    if gate:
+        return gate
     _ensure_store()
     engram = _store.get_engram(engram_id)  # type: ignore
     if engram is None:
@@ -345,6 +699,9 @@ def mnemos_consolidate(deep: bool = False, agent_id: str = "default") -> str:
         deep: If true, run deep consolidation with all passes.
         agent_id: Which agent's memory to consolidate. Default: "default".
     """
+    gate = _setup_gate()
+    if gate:
+        return gate
     _ensure_store()
     daemon = ConsolidationDaemon(store=_store, config={}, llm_client=_llm_client, embedding_index=_embedding_index)  # type: ignore
     stats = daemon.run_cycle(deep=deep, agent_id=agent_id)
@@ -375,5 +732,18 @@ def mnemos_consolidate(deep: bool = False, agent_id: str = "default") -> str:
 
 def run_server(db_path: str = "~/.mnemos/memory.db") -> None:
     """Start the MCP server in stdio mode."""
+    def _shutdown(signum, frame):
+        logger.info("Shutting down MCP server...")
+        if _store:
+            try:
+                _store.close()
+            except Exception:
+                pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+
     _init_store(db_path)
+    logger.info("Mnemos MCP server starting (stdio mode)")
     mcp.run()

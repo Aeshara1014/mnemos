@@ -32,3 +32,21 @@ Advanced modules (opt-in):
 """
 
 __version__ = "0.1.0"
+
+# Public API
+from .store.sqlite_store import EngramStore
+from .encoding.encoder import Encoder
+from .retrieval.reactive import ReactiveRetriever
+from .consolidation.daemon import ConsolidationDaemon
+from .bridge import MnemosBridge
+from .config.loader import load_config, save_config
+
+__all__ = [
+    "EngramStore",
+    "Encoder",
+    "ReactiveRetriever",
+    "ConsolidationDaemon",
+    "MnemosBridge",
+    "load_config",
+    "save_config",
+]
