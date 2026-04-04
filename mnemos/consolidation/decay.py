@@ -22,12 +22,18 @@ if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
 
 
-def run_decay_pass(store: EngramStore, config: dict[str, Any]) -> dict[str, Any]:
+def run_decay_pass(
+    store: EngramStore,
+    config: dict[str, Any],
+    agent_id: str | None = "default",
+) -> dict[str, Any]:
     """Recalculate strength, stability, and accessibility for all active engrams.
 
     Args:
         store: The engram store containing active engrams.
         config: Configuration dict with decay parameters.
+        agent_id: Which agent's engrams to decay. None = all agents
+            (used for shared DB consolidation).
 
     Returns:
         Statistics dict with counts and accessibility changes.
@@ -37,7 +43,7 @@ def run_decay_pass(store: EngramStore, config: dict[str, Any]) -> dict[str, Any]
     archive_threshold = config.get("archive_threshold", 0.01)
 
     # load_connections=True because decay uses connection count for decay resistance
-    engrams = store.get_active_engrams(limit=10000, load_connections=True)
+    engrams = store.get_active_engrams(agent_id=agent_id, limit=10000, load_connections=True)
 
     stats = {
         "engrams_processed": 0,

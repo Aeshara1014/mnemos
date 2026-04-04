@@ -24,6 +24,7 @@ from ..core.types import (
     EncodingDepth,
     EngramKind,
     SourceType,
+    Visibility,
 )
 from .llm_classifier import (
     classify_connections,
@@ -46,6 +47,53 @@ _CONFIDENCE_BY_SOURCE: dict[str, tuple[float, str]] = {
     SourceType.DREAM: (0.30, ConfidenceSource.SPECULATIVE),
     SourceType.MERGE: (0.35, ConfidenceSource.SPECULATIVE),
 }
+
+# Tags that trigger auto-sharing to the shared pool
+_AUTO_SHARE_TAGS = frozenset({
+    "task-completion", "decision", "summary", "error", "discovery",
+    "deployment", "architecture", "lesson", "distilled",
+})
+
+# Tags that force engrams to stay private
+_PRIVATE_TAGS = frozenset({
+    "internal", "emotional", "working-memory", "reflection", "thinking",
+})
+
+# Source types that are internal processing and should stay private
+_PRIVATE_SOURCES = frozenset({SourceType.DREAM, SourceType.REFLECTION})
+
+
+def should_auto_share(engram: Engram) -> bool:
+    """Determine whether an engram should be auto-published to the shared pool.
+
+    Auto-share: task completions, decisions, summaries, errors, discoveries,
+    lessons, and high-confidence semantic/procedural knowledge.
+
+    Keep private: internal reasoning, emotional state, working memory,
+    reflections, and dream-sourced content.
+    """
+    tags = set(engram.tags)
+
+    # Explicit private tags override everything
+    if tags & _PRIVATE_TAGS:
+        return False
+
+    # Internal processing sources stay private
+    if engram.source.type in _PRIVATE_SOURCES:
+        return False
+
+    # Explicit share tags
+    if tags & _AUTO_SHARE_TAGS:
+        return True
+
+    # High-confidence semantic/procedural knowledge
+    if (
+        engram.kind in (EngramKind.SEMANTIC, EngramKind.PROCEDURAL)
+        and engram.source.confidence >= 0.7
+    ):
+        return True
+
+    return False
 
 
 class Encoder:
@@ -73,11 +121,13 @@ class Encoder:
         max_connections: int = 5,
         embedding_index: Any | None = None,
         llm_client: LLMClient | None = None,
+        shared_pool: Any | None = None,
     ) -> None:
         self._store = store
         self._max_connections = max_connections
         self._embedding_index = embedding_index
         self._llm_client = llm_client
+        self._shared_pool = shared_pool
 
     def encode(
         self,
@@ -191,6 +241,12 @@ class Encoder:
                 self._embedding_index.index_engram(engram.id, engram.content)
             except Exception:
                 pass  # Don't fail encoding if embedding fails
+
+        # 9. Auto-publish to shared pool if applicable
+        if self._shared_pool and should_auto_share(engram):
+            engram.visibility = Visibility.SHARED
+            self._store.save_engram(engram)  # update visibility in private DB
+            self._shared_pool.publish(engram)
 
         return engram
 

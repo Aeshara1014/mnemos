@@ -297,23 +297,32 @@ class EngramStore:
 
     def get_active_engrams(
         self,
-        agent_id: str = "default",
+        agent_id: str | None = "default",
         limit: int = 1000,
         load_connections: bool = True,
     ) -> list[Engram]:
         """Get all active engrams for an agent, sorted by accessibility.
 
         Args:
+            agent_id: Which agent's engrams to return. If None, returns all
+                agents' active engrams (useful for shared DB consolidation).
             load_connections: If True, load connections for each engram.
                 Set to False for bulk operations where connections aren't needed
                 (e.g., decay pass only needs accessibility/strength fields).
         """
         conn = self._get_conn()
-        rows = conn.execute(
-            "SELECT * FROM engrams WHERE state = 'active' "
-            "AND owner_agent_id = ? ORDER BY accessibility DESC LIMIT ?",
-            (agent_id, limit),
-        ).fetchall()
+        if agent_id is None:
+            rows = conn.execute(
+                "SELECT * FROM engrams WHERE state = 'active' "
+                "ORDER BY accessibility DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM engrams WHERE state = 'active' "
+                "AND owner_agent_id = ? ORDER BY accessibility DESC LIMIT ?",
+                (agent_id, limit),
+            ).fetchall()
         engrams = [Engram.from_dict(dict(r)) for r in rows]
         if load_connections:
             for engram in engrams:
@@ -333,13 +342,24 @@ class EngramStore:
         conn.execute("DELETE FROM versions WHERE engram_id = ?", (engram_id,))
         conn.commit()
 
-    def count_engrams(self, agent_id: str = "default", state: str = "active") -> int:
-        """Count engrams for an agent in a given state."""
+    def count_engrams(self, agent_id: str | None = "default", state: str = "active") -> int:
+        """Count engrams for an agent in a given state.
+
+        Args:
+            agent_id: Agent to count for. If None, counts all agents.
+            state: Engram state to filter by.
+        """
         conn = self._get_conn()
-        row = conn.execute(
-            "SELECT COUNT(*) FROM engrams WHERE owner_agent_id = ? AND state = ?",
-            (agent_id, state),
-        ).fetchone()
+        if agent_id is None:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM engrams WHERE state = ?",
+                (state,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM engrams WHERE owner_agent_id = ? AND state = ?",
+                (agent_id, state),
+            ).fetchone()
         return row[0] if row else 0
 
     # ── Full-Text Search ──

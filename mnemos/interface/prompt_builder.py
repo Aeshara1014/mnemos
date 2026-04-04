@@ -14,7 +14,7 @@ Token budget strategy:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..core.belief import Belief
 from ..core.identity import AgentIdentity
@@ -44,8 +44,9 @@ class PromptBuilder:
         )
     """
 
-    def __init__(self, store: EngramStore) -> None:
+    def __init__(self, store: EngramStore, shared_store: Any | None = None) -> None:
         self._store = store
+        self._shared_store = shared_store
 
     def build(
         self,
@@ -80,7 +81,7 @@ class PromptBuilder:
 
         # 2. RETRIEVE MEMORIES relevant to cue
         if cue and remaining_tokens > 50:  # Need at least 50 tokens for memories
-            retriever = ReactiveRetriever(self._store)
+            retriever = ReactiveRetriever(self._store, shared_store=self._shared_store)
             emotional_state = self._store.get_latest_emotional_state(agent_id)
             results = retriever.retrieve(
                 cue=cue,

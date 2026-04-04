@@ -76,6 +76,7 @@ class ReactiveRetriever:
         self,
         store: EngramStore,
         embedding_index: Any | None = None,
+        shared_store: Any | None = None,
         activation_depth: int = 3,
         activation_decay: float = 0.5,
         activation_threshold: float = 0.1,
@@ -84,6 +85,7 @@ class ReactiveRetriever:
     ) -> None:
         self._store = store
         self._embedding_index = embedding_index
+        self._shared_store = shared_store
         self._depth = activation_depth
         self._decay = activation_decay
         self._threshold = activation_threshold
@@ -122,6 +124,16 @@ class ReactiveRetriever:
             if engram.owner_agent_id == agent_id:
                 seeds[engram.id] = engram
 
+        # Shared DB seeds (cross-agent shared memories)
+        if self._shared_store:
+            try:
+                shared_fts = self._shared_store.search_fts(fts_query, limit=20)
+                for engram in shared_fts:
+                    if engram.visibility in ("shared", "public") and engram.id not in seeds:
+                        seeds[engram.id] = engram
+            except Exception:
+                pass  # Shared store is optional
+
         # Embedding seeds (meaning matching — finds what FTS misses)
         if self._embedding_index and hasattr(self._embedding_index, 'search'):
             try:
@@ -156,6 +168,12 @@ class ReactiveRetriever:
                     continue
 
                 connections = self._store.get_connections(engram_id)
+                # Cross-DB connections: also check shared store
+                if self._shared_store:
+                    try:
+                        connections = connections + self._shared_store.get_connections(engram_id)
+                    except Exception:
+                        pass
                 for conn in connections:
                     # Weight by relation type
                     relation_weight = _RELATION_WEIGHTS.get(conn.relation, 0.5)
@@ -188,8 +206,14 @@ class ReactiveRetriever:
             engram = seeds.get(eid)
             if not engram:
                 engram = self._store.get_engram(eid)
+            # Cross-DB: check shared store if not found in private
+            if not engram and self._shared_store:
+                engram = self._shared_store.get_engram(eid)
 
-            if not engram or engram.state != "active" or engram.owner_agent_id != agent_id:
+            if not engram or engram.state != "active":
+                continue
+            # Allow own engrams + shared/public from other agents
+            if engram.owner_agent_id != agent_id and engram.visibility == "private":
                 continue
 
             if engram.source.confidence < self._confidence_floor:
@@ -216,13 +240,20 @@ class ReactiveRetriever:
         if self._reconsolidation_enabled and top_results:
             co_retrieved_ids = [r.engram.id for r in top_results]
             for result in top_results:
+                # Reconsolidate in the engram's home store
+                target_store = self._store
+                if (
+                    result.engram.owner_agent_id != agent_id
+                    and self._shared_store
+                ):
+                    target_store = self._shared_store
                 result.engram = reconsolidate(
                     engram=result.engram,
                     current_context=cue,
                     co_retrieved_ids=[
                         eid for eid in co_retrieved_ids if eid != result.engram.id
                     ],
-                    store=self._store,
+                    store=target_store,
                 )
 
         return top_results

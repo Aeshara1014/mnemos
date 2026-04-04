@@ -121,6 +121,7 @@ class ConsolidationDaemon:
             decay_stats = run_decay_pass(
                 store=self._store,
                 config=consolidation_config,
+                agent_id=agent_id,
             )
             stats["decay"] = decay_stats
             stats["passes_run"].append("decay")

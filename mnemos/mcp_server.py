@@ -34,6 +34,7 @@ _store: EngramStore | None = None
 _encoder: Encoder | None = None
 _retriever: ReactiveRetriever | None = None
 _embedding_index: EmbeddingIndex | None = None
+_shared_pool = None
 
 mcp = FastMCP("mnemos")
 
@@ -43,7 +44,7 @@ _llm_client = None
 
 def _init_store(db_path: str = "~/.mnemos/memory.db") -> None:
     """Initialize the global store, helpers, and auto-detect LLM client."""
-    global _store, _encoder, _retriever, _llm_client, _embedding_index
+    global _store, _encoder, _retriever, _llm_client, _embedding_index, _shared_pool
     if _store is None:
         _store = EngramStore(db_path)
         # Initialize embedding index (same DB path — gracefully degrades)
@@ -51,8 +52,20 @@ def _init_store(db_path: str = "~/.mnemos/memory.db") -> None:
         # Auto-detect LLM client from env vars (before encoder, which uses it)
         from .llm import create_client
         _llm_client = create_client()
-        _encoder = Encoder(_store, embedding_index=_embedding_index, llm_client=_llm_client)
-        _retriever = ReactiveRetriever(_store, embedding_index=_embedding_index)
+        # Initialize shared memory pool
+        from .multiagent.shared_pool import SharedPool
+        _shared_pool = SharedPool()  # defaults to ~/.mnemos/shared.db
+        _encoder = Encoder(
+            _store,
+            embedding_index=_embedding_index,
+            llm_client=_llm_client,
+            shared_pool=_shared_pool,
+        )
+        _retriever = ReactiveRetriever(
+            _store,
+            embedding_index=_embedding_index,
+            shared_store=_shared_pool._store,
+        )
 
 
 def _ensure_store() -> EngramStore:
@@ -257,6 +270,49 @@ def mnemos_beliefs(agent_id: str = "default", domain: str = "") -> str:
         lines.append(f"- {b.content} [{b.domain}, {pct}%, {revisions} revisions]")
 
     return f"{len(beliefs)} active beliefs:\n\n" + "\n".join(lines)
+
+
+@mcp.tool()
+def mnemos_shared(
+    query: str = "",
+    max_results: int = 10,
+    agent_id: str = "default",
+) -> str:
+    """Get memories shared by other agents in the shared memory pool.
+
+    Shows what other agents have learned, decided, built, or discovered.
+    Use this to stay in sync with the team's shared knowledge.
+
+    Args:
+        query: Optional search query. If empty, returns most recent shared memories.
+        max_results: Maximum number of results (default: 10).
+        agent_id: Your agent ID (used for attribution, not filtering).
+    """
+    _ensure_store()
+    if not _shared_pool:
+        return "Shared memory pool not initialized."
+
+    shared = _shared_pool.get_shared(
+        agent_id=agent_id,
+        limit=max_results,
+        query=query or None,
+    )
+
+    if not shared:
+        return "No shared memories found."
+
+    lines = []
+    for engram in shared:
+        display = engram.impact if engram.impact else engram.content
+        if len(display) > 150:
+            display = display[:147] + "..."
+        pct = int(engram.source.confidence * 100)
+        lines.append(
+            f"[{engram.owner_agent_id}] {display}\n"
+            f"       id={engram.id[:25]}... kind={engram.kind} confidence={pct}%"
+        )
+
+    return f"Found {len(shared)} shared memories:\n\n" + "\n\n".join(lines)
 
 
 @mcp.tool()
