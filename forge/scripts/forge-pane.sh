@@ -90,7 +90,10 @@ build_command() {
 
     case "$agent" in
         claude)
-            cmd+="claude --dangerously-skip-permissions -p $(printf '%q' "$prompt")"
+            # Note: do NOT use --print or -p flags — they use the alternate screen buffer
+            # and render blank in tmux. Interactive mode (--dangerously-skip-permissions only)
+            # is the only reliable approach. Prompt is sent via tmux send-keys after load.
+            cmd+="claude --dangerously-skip-permissions"
             ;;
         codex)
             cmd+="codex --approval-policy full-auto $(printf '%q' "$prompt")"
@@ -184,6 +187,20 @@ PANE_EOF
                 do script \"tmux attach-session -t ${SESSION}\"
             end tell
         " &>/dev/null &
+    fi
+
+    # For Claude: send the prompt via tmux send-keys after it loads.
+    # Claude uses an interactive TUI — passing prompt via -p/--print breaks rendering.
+    # We wait for Claude to load (trust dialog + prompt ready) then inject the task.
+    if [[ "$agent" == "claude" && -n "$prompt" ]]; then
+        (
+            sleep 5  # Wait for Claude to load and show trust dialog
+            # Confirm trust dialog if present (Enter = "Yes, I trust this folder")
+            tmux send-keys -t "$SESSION" "" Enter 2>/dev/null
+            sleep 2
+            # Send the actual prompt
+            tmux send-keys -t "$SESSION" "$prompt" Enter 2>/dev/null
+        ) &
     fi
 
     echo "Dispatched '$pane_name' using $agent"
