@@ -42,4 +42,4 @@ htmlcov/
 .ruff_cache/
 
 # Local archive — not pushed to GitHub
-.archive/
+archive/
