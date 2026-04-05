@@ -6,11 +6,60 @@ Memory is not a feature of the agent. Memory *is* the agent.
 
 Mnemos replaces passive note-storage with active, living memory that encodes at varying depths, forgets naturally, predicts what it'll need, and changes its memories every time it touches them.
 
+Mnemos is a complete agent cognition system — not just a memory library. It provides persistent identity, living memory, autonomous maintenance crons, a cognitive substrate, and cross-agent awareness. Together, these layers give an AI agent continuous selfhood across sessions.
+
 Built as an [MCP](https://modelcontextprotocol.io/) server with 7 tools. SQLite-backed. No external services required — optional LLM integration for richer consolidation.
 
 ---
 
-## Quick Start
+## The Full Stack
+
+Mnemos operates in five layers:
+
+```
+Identity Architecture    SOUL.md · IDENTITY.md · MEMORY.md · active-context.md
+Cron Suite               Observer · Indexer · Substrate · Maintenance · Bridge
+Mnemos Core              Engrams · Connections · Beliefs · Consolidation
+Substrate                Decay · Dreaming · Reflection · Modulators · Events
+Cross-Agent Layer        Shared Pool · Bridge · Federation · Attestation
+```
+
+**Identity** defines who the agent is. **Crons** keep everything current autonomously. **Core** is the living memory graph. **Substrate** is the subconscious — consolidation, dreaming, reflection. **Cross-Agent** enables multi-agent awareness.
+
+See [docs/architecture.md](docs/architecture.md) for the full architecture overview.
+
+---
+
+## Quick Start — Full Stack
+
+Bootstrap a complete agent with one command:
+
+```bash
+# Install Mnemos
+pip install "mnemos[all]"
+
+# Bootstrap a complete agent stack
+mnemos bootstrap \
+  --agent-name Nova \
+  --workspace ~/nova \
+  --user-name Riley
+
+# This creates:
+#   ~/nova/SOUL.md              Agent personality and philosophy
+#   ~/nova/IDENTITY.md          Operational identity and boundaries
+#   ~/nova/MEMORY.md            Living memory document
+#   ~/nova/AGENTS.md            Multi-agent configuration
+#   ~/nova/HEARTBEAT.md         Health monitoring
+#   ~/nova/memory/              Active context and cross-agent files
+#   ~/nova/daily/               Morning briefs and debriefs
+#   ~/nova/inner_life/          Substrate outputs
+#   ~/nova/.env                 Environment configuration template
+#   ~/.mnemos/nova.db           Mnemos database
+
+# Follow the printed instructions to install OpenClaw crons
+```
+
+## Quick Start — Library Only
 
 ```bash
 # Install core (SQLite + stdlib only)
@@ -94,6 +143,7 @@ mnemos inspect <engram-id>           # Full details on a memory
 mnemos consolidate                   # Shallow consolidation (decay + connections)
 mnemos consolidate --deep            # Deep consolidation (+ softening, beliefs, reflection)
 mnemos export --workspace ./output   # Export MEMORY.md and workspace files
+mnemos bootstrap --agent-name Nova --workspace ~/nova  # Bootstrap full agent stack
 ```
 
 Global options: `--db-path <path>` and `--agent-id <name>` work with all commands.
@@ -265,6 +315,63 @@ Set `GOOGLE_API_KEY` in your environment. Without embeddings, Mnemos uses SQLite
 
 ---
 
+## Identity Architecture
+
+Mnemos gives agents a persistent self through structured identity files:
+
+| File | Purpose | Updated By |
+|------|---------|-----------|
+| `SOUL.md` | Essence, personality, philosophy, voice | Manual (rare) |
+| `IDENTITY.md` | Role, capabilities, boundaries, protocols | Manual (occasional) |
+| `MEMORY.md` | Living memory — facts, projects, patterns | Memory maintenance cron (every 6h) |
+| `AGENTS.md` | Multi-agent topology and communication | Manual (rare) |
+| `HEARTBEAT.md` | Health monitoring configuration | Manual (rare) |
+| `active-context.md` | Current threads, where we left off | Observer cron (every 30 min) |
+
+Templates for all identity files are in `templates/`. The `mnemos bootstrap` command copies and personalizes them.
+
+---
+
+## Cron Suite
+
+The agent's autonomous nervous system. These run as isolated [OpenClaw](https://openclaw.dev) sessions:
+
+| Cron | Schedule | Purpose |
+|------|----------|---------|
+| **Observer** | Every 30 min | Reads session transcripts → updates `active-context.md` |
+| **Session Indexer** | Every 30 min | Extracts memories from conversations → encodes into graph |
+| **Substrate Tick** | Every 4 hours | Runs consolidation (decay, dreaming, beliefs, modulators) |
+| **Memory Maintenance** | Every 6 hours | Reviews sessions → updates `MEMORY.md` |
+| **Cross-Agent Bridge** | Every 2 hours | Syncs context between agents |
+| **Morning Brief** | Daily 10 AM | Generates daily summary and priorities |
+| **Daily Debrief** | Daily 5 AM | End-of-day recap and handoff |
+
+Cron templates with full prompts are in `openclaw/crons/`. See [docs/openclaw-integration.md](docs/openclaw-integration.md) for setup instructions.
+
+---
+
+## Cross-Agent Communication
+
+Multiple agents can share awareness through:
+
+- **Shared Memory Pool** (`~/.mnemos/shared.db`): Agents publish memories with visibility controls. Conflict resolution by confidence > strength > recency.
+- **Cross-Agent Bridge**: Syncs each agent's `active-context.md` into a combined `cross-agent-context.md` that all agents can read.
+- **Agent Configuration** (`~/.mnemos/agents.json`): Registry of all agents in the system.
+
+```bash
+# Register agents with the bridge
+python -m mnemos.multiagent.bridge add-agent nova ~/nova
+python -m mnemos.multiagent.bridge add-agent anima ~/anima
+
+# Check status
+python -m mnemos.multiagent.bridge status
+
+# Sync context (also runs automatically via cron)
+python -m mnemos.multiagent.bridge sync
+```
+
+---
+
 ## How It's Different
 
 Most AI memory systems are key-value stores with search. Mnemos models how memory actually works:
@@ -275,6 +382,13 @@ Most AI memory systems are key-value stores with search. Mnemos models how memor
 - **Beliefs emerge.** Higher-order knowledge structures form from patterns across memories.
 - **Forgetting is a feature.** Not a bug. Graceful degradation preserves essence while shedding noise.
 - **Confidence is tracked.** Every memory knows how much to trust itself.
+
+---
+
+## Documentation
+
+- [Architecture Overview](docs/architecture.md) — How all the layers connect
+- [OpenClaw Integration Guide](docs/openclaw-integration.md) — Full setup walkthrough
 
 ---
 

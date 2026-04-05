@@ -10,6 +10,7 @@ Commands:
     mnemos consolidate [--deep]  Run a consolidation cycle
     mnemos export [--workspace]  Export workspace files (MEMORY.md, etc.)
     mnemos setup-openclaw        Register cron jobs for OpenClaw
+    mnemos bootstrap             Bootstrap a complete agent stack
 """
 
 from __future__ import annotations
@@ -79,6 +80,13 @@ def main(argv: list[str] | None = None) -> int:
     p_index = sub.add_parser("index", help="Run session indexer")
     p_index.add_argument("--backfill", action="store_true", help="Index last 24h of sessions")
 
+    # ── bootstrap ──
+    p_bootstrap = sub.add_parser("bootstrap", help="Bootstrap a complete agent stack")
+    p_bootstrap.add_argument("--agent-name", required=True, help="Agent name (e.g., Nova)")
+    p_bootstrap.add_argument("--workspace", required=True, help="Workspace directory path")
+    p_bootstrap.add_argument("--user-name", default="User", help="User name (default: User)")
+    p_bootstrap.add_argument("--timezone", default="America/New_York", help="Timezone for crons")
+
     # ── bridge ──
     p_bridge = sub.add_parser("bridge", help="Direct memory operations")
     bridge_sub = p_bridge.add_subparsers(dest="bridge_command")
@@ -104,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
         "consolidate": _cmd_consolidate,
         "export": _cmd_export,
         "setup-openclaw": _cmd_setup_openclaw,
+        "bootstrap": _cmd_bootstrap,
         "substrate-tick": _cmd_substrate_tick,
         "index": _cmd_index,
         "bridge": _cmd_bridge,
@@ -357,6 +366,21 @@ def _cmd_index(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"Indexer failed: {e}", file=sys.stderr)
         return 1
+
+
+def _cmd_bootstrap(args: argparse.Namespace) -> int:
+    """Bootstrap a complete agent stack."""
+    from .setup.bootstrap import bootstrap, print_result
+
+    result = bootstrap(
+        agent_name=args.agent_name,
+        workspace=args.workspace,
+        user_name=args.user_name,
+        timezone=args.timezone,
+    )
+
+    print_result(result)
+    return 1 if result["errors"] else 0
 
 
 def _cmd_bridge(args: argparse.Namespace) -> int:
