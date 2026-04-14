@@ -50,6 +50,9 @@ DEFAULT_CONFIG: dict = {
         "reconsolidation_enabled": True,
         "reconsolidation_strength_delta": 0.05,
         "reconsolidation_stability_delta": 0.01,
+        "reconsolidation_spacing_factor": 0.5,
+        "reconsolidation_max_stability_delta": 0.03,
+        "reconsolidation_connection_bonus": 0.002,
     },
 
     # ── Consolidation ──
@@ -59,6 +62,12 @@ DEFAULT_CONFIG: dict = {
         "dormant_threshold": 0.05,
         "archive_threshold": 0.01,
         "decay_interval_hours": 6,
+
+        # Long-term stability (exponential decay model)
+        "stability_decay_factor": 3.0,         # k in exp(-k * stability)
+        "stability_connection_threshold": 3,   # min connections to trigger growth
+        "stability_growth_rate": 0.002,        # per log1p(n_connections) per cycle
+        "stability_growth_cap": 0.005,         # max growth per cycle
 
         # Softening pass
         "softening_enabled": True,

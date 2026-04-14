@@ -6,6 +6,7 @@ Uses the Anthropic MCP Python SDK (FastMCP).
 
 Tools:
     mnemos_remember     — Encode a new memory
+    mnemos_ingest       — Ingest content from external sources
     mnemos_recall       — Retrieve relevant memories
     mnemos_inspect      — View full details of a memory
     mnemos_status       — Get memory system status
@@ -415,6 +416,8 @@ def mnemos_remember(
     kind: str = "semantic",
     tags: str = "",
     agent_id: str = "default",
+    source_type: str = "session",
+    visibility: str = "private",
     skip_surprise_detection: bool = False,
 ) -> str:
     """Encode a new memory into the Mnemos living memory system.
@@ -431,6 +434,8 @@ def mnemos_remember(
               "procedural" (how-to knowledge). Default: "semantic".
         tags: Comma-separated tags for categorization. Example: "python,debugging,preferences"
         agent_id: Which agent's memory to store in. Default: "default".
+        source_type: How the memory was captured — "session", "browser_extraction", etc.
+        visibility: Memory visibility — "private", "shared", or "public". Default: "private".
     """
     gate = _setup_gate()
     if gate:
@@ -443,15 +448,85 @@ def mnemos_remember(
         impact=impact,
         kind=kind,
         tags=tag_list,
-        source=SourceType.SESSION,
+        source=source_type,
         agent_id=agent_id,
         skip_surprise_detection=skip_surprise_detection,
     )
+
+    if visibility != "private":
+        engram.visibility = visibility
+        _store.save_engram(engram)
 
     return (
         f"Remembered: {engram.id}\n"
         f"  Confidence: {engram.source.confidence}\n"
         f"  Connections: {len(engram.connections)} discovered\n"
+        f"  Tags: {', '.join(engram.tags) or '(none)'}"
+    )
+
+
+@mcp.tool()
+def mnemos_ingest(
+    content: str,
+    impact: str = "",
+    kind: str = "semantic",
+    tags: str = "",
+    agent_id: str = "default",
+    source_url: str = "",
+    encoding_depth: str = "moderate",
+    confidence: float = 0.0,
+    skip_surprise: bool = False,
+) -> str:
+    """Ingest content from an external source into Mnemos.
+
+    Use this for feeding knowledge from external pipelines, documents,
+    APIs, or any non-conversational source. Content enters through the
+    full encoding pipeline (surprise detection, belief comparison,
+    connection discovery) unless encoding_depth is set to "shallow".
+
+    Args:
+        content: The knowledge or information to ingest.
+        impact: Lasting insight — what this means, not just what it says.
+        kind: Memory type — "semantic" (facts), "episodic" (events),
+              "procedural" (how-to). Default: "semantic".
+        tags: Comma-separated tags. Example: "research,memory-systems"
+        agent_id: Which agent's memory to store in. Default: "default".
+        source_url: URL or path of the original source (for provenance).
+        encoding_depth: Processing depth — "shallow" (store only),
+              "moderate" (full pipeline), "deep" (full + belief check).
+        confidence: Override confidence score (0.0 = use source-based default).
+        skip_surprise: Skip surprise detection during encoding.
+    """
+    gate = _setup_gate()
+    if gate:
+        return gate
+    _ensure_store()
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+
+    skip = skip_surprise or (encoding_depth == "shallow")
+    override_conf = confidence if confidence > 0.0 else None
+
+    engram = _encoder.encode(  # type: ignore
+        content=content,
+        impact=impact,
+        kind=kind,
+        tags=tag_list,
+        source=SourceType.EXTERNAL,
+        agent_id=agent_id,
+        override_confidence=override_conf,
+        skip_surprise_detection=skip,
+    )
+
+    if source_url:
+        engram.encoding_context.source_url = source_url
+        _store.save_engram(engram)
+
+    return (
+        f"Ingested: {engram.id}\n"
+        f"  Source: external{f' ({source_url})' if source_url else ''}\n"
+        f"  Confidence: {engram.source.confidence}\n"
+        f"  Connections: {len(engram.connections)} discovered\n"
+        f"  Depth: {encoding_depth}\n"
         f"  Tags: {', '.join(engram.tags) or '(none)'}"
     )
 
@@ -534,7 +609,7 @@ def mnemos_inspect(engram_id: str) -> str:
         f"State: {engram.state}",
         f"Resolution: {engram.resolution}",
         f"Strength: {engram.strength:.4f}",
-        f"Stability: {engram.stability:.4f}",
+        f"Stability: {engram.stability:.4f}{' (long-term)' if engram.stability >= 0.8 else ' (consolidating)' if engram.stability >= 0.5 else ''}",
         f"Accessibility: {engram.accessibility:.4f}",
         f"Confidence: {engram.source.confidence} ({engram.source.confidence_source})",
         f"Created: {engram.created_at}",
@@ -568,9 +643,16 @@ def mnemos_status(agent_id: str = "default") -> str:
     _ensure_store()
     stats = _store.get_stats(agent_id)  # type: ignore
 
+    # Count long-term (stability >= 0.8) engrams
+    active_engrams = _store.get_active_engrams(agent_id=agent_id, limit=10000)  # type: ignore
+    longterm_count = sum(1 for e in active_engrams if e.stability >= 0.8)
+    consolidating_count = sum(1 for e in active_engrams if 0.5 <= e.stability < 0.8)
+
     lines = [
         f"Mnemos Status (agent: {agent_id})",
         f"  Active engrams: {stats.get('engrams_active', 0)}",
+        f"    Long-term (stability >= 0.8): {longterm_count}",
+        f"    Consolidating (0.5-0.8): {consolidating_count}",
         f"  Dormant: {stats.get('engrams_dormant', 0)}",
         f"  Archived: {stats.get('archived', 0)}",
         f"  Connections: {stats.get('connections', 0)}",

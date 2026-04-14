@@ -67,8 +67,9 @@ def run_decay_pass(
         hours = _hours_since(engram.last_accessed)
 
         # 1. ACCESSIBILITY DECAY
-        # Stability resists decay: higher stability = slower forgetting
-        effective_decay = decay_rate / (1.0 + engram.stability)
+        # Stability resists decay exponentially: high stability → near-zero decay
+        stability_factor = config.get("stability_decay_factor", 3.0)
+        effective_decay = decay_rate * math.exp(-stability_factor * engram.stability)
 
         # Connection factor: well-connected memories decay slower (multiplicative)
         n_connections = len(engram.connections)
@@ -76,6 +77,16 @@ def run_decay_pass(
             connection_factor = min(1.0, 0.2 + 0.2 * math.log1p(n_connections))
             effective_decay *= (1.0 - connection_factor * 0.5)
             # At 5 connections: decay slowed by ~16%. At 20: slowed by ~30%.
+
+        # Connection-driven stability growth: structurally important memories
+        # gain stability each cycle — the graph topology determines persistence
+        stability_conn_threshold = config.get("stability_connection_threshold", 3)
+        stability_growth_rate = config.get("stability_growth_rate", 0.002)
+        stability_growth_cap = config.get("stability_growth_cap", 0.005)
+
+        if n_connections >= stability_conn_threshold:
+            growth = min(stability_growth_cap, stability_growth_rate * math.log1p(n_connections))
+            engram.stability = min(1.0, round(engram.stability + growth, 4))
 
         # Exponential decay
         new_accessibility = engram.accessibility * math.exp(-effective_decay * hours)

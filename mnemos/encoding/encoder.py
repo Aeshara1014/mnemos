@@ -46,6 +46,8 @@ _CONFIDENCE_BY_SOURCE: dict[str, tuple[float, str]] = {
     SourceType.OBSERVER: (0.40, ConfidenceSource.MODEL_INFERRED),
     SourceType.DREAM: (0.30, ConfidenceSource.SPECULATIVE),
     SourceType.MERGE: (0.35, ConfidenceSource.SPECULATIVE),
+    SourceType.BROWSER_EXTRACTION: (0.65, ConfidenceSource.USER_IMPLIED),
+    SourceType.EXTERNAL: (0.55, ConfidenceSource.MODEL_INFERRED),
 }
 
 # Tags that trigger auto-sharing to the shared pool

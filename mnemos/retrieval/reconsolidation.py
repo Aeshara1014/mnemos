@@ -12,7 +12,8 @@ they are touched, rather than being static records.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import math
+from typing import TYPE_CHECKING, Any
 
 from ..core.engram import Engram
 from ..core.types import ConnectionRelation
@@ -29,6 +30,8 @@ def reconsolidate(
     strength_delta: float = 0.05,
     stability_delta: float = 0.01,
     accessibility_floor: float = 0.8,
+    *,
+    config: dict[str, Any] | None = None,
 ) -> Engram:
     """Update a memory after retrieval (reconsolidation).
 
@@ -64,8 +67,21 @@ def reconsolidate(
     # 2. Strength increases — retrieval is rehearsal
     engram.strength = min(1.0, engram.strength + strength_delta)
 
-    # 3. Stability increases slowly — spaced repetition effect
-    engram.stability = min(1.0, engram.stability + stability_delta)
+    # 3. Stability increases — scaled by retrieval history (spaced repetition)
+    cfg = config or {}
+    spacing_factor = cfg.get("reconsolidation_spacing_factor", 0.5)
+    max_delta = cfg.get("reconsolidation_max_stability_delta", 0.03)
+    scaled_delta = min(
+        max_delta,
+        stability_delta * (1 + math.log1p(engram.reconsolidation_count) * spacing_factor),
+    )
+
+    # Connection bonus: well-connected memories stabilize faster on retrieval
+    conn_bonus_rate = cfg.get("reconsolidation_connection_bonus", 0.002)
+    n_conns = len(engram.connections)
+    conn_bonus = min(0.01, conn_bonus_rate * n_conns)
+
+    engram.stability = min(1.0, engram.stability + scaled_delta + conn_bonus)
 
     # 4. Accessibility boost — just accessed, very retrievable now
     engram.accessibility = min(1.0, max(engram.accessibility, accessibility_floor))

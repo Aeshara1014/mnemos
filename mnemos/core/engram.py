@@ -89,6 +89,9 @@ class EncodingContext:
     High surprise = contradicted existing beliefs or memories.
     Drives deeper encoding (higher initial strength/stability)."""
 
+    source_url: str | None = None
+    """URL or path of the external source, if applicable."""
+
     def to_dict(self) -> dict:
         return {
             "wm_snapshot": self.wm_snapshot,
@@ -100,6 +103,7 @@ class EncodingContext:
             "session_id": self.session_id,
             "agent_goals": self.agent_goals,
             "surprise_level": self.surprise_level,
+            "source_url": self.source_url,
         }
 
     @classmethod
