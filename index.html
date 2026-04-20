@@ -183,6 +183,17 @@ a:hover{color:var(--ink);border-color:var(--text-soft)}
 .port-connected:hover{border-color:var(--border-strong);background:var(--bg-elevated)}
 .port-shared{margin-top:8px;padding:10px 14px;background:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:11px;color:var(--text-primary);text-align:center;letter-spacing:0.02em}
 
+/* Synapse showcase */
+.synapse-showcase{display:grid;grid-template-columns:auto 1fr;gap:40px;margin:32px 0;align-items:start}
+.synapse-image{width:280px;flex-shrink:0}
+.synapse-image img{width:100%;height:auto;border-radius:var(--radius-lg);border:1px solid var(--border-subtle);box-shadow:0 24px 80px rgba(0,0,0,0.4),0 4px 16px rgba(0,0,0,0.2)}
+.synapse-info{display:flex;flex-direction:column;gap:20px;padding-top:4px}
+.synapse-features{display:flex;flex-direction:column;gap:14px}
+.synapse-feat-name{font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--text-primary);margin-bottom:3px;letter-spacing:0.01em}
+.synapse-feat-desc{font-size:12px;color:var(--text-tertiary);line-height:1.5}
+.synapse-cta{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;font-weight:500;color:var(--text-secondary);letter-spacing:0.02em;padding:10px 20px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:transparent;text-decoration:none;transition:all var(--dur-fast) var(--ease-out);width:fit-content;margin-top:4px}
+.synapse-cta:hover{color:var(--text-primary);border-color:var(--text-soft);background:rgba(220,219,216,0.03)}
+
 /* Onboarding flow */
 .onboard-flow{margin:28px 0 32px;display:flex;flex-direction:column;gap:2px}
 .onboard-step{display:flex;gap:16px;padding:14px 18px;background:var(--bg-deep);border:1px solid var(--border-subtle);border-radius:var(--radius-md);transition:all var(--dur-fast) var(--ease-out)}
@@ -275,6 +286,7 @@ footer a:hover{color:var(--text-soft)}
   .compare-grid{grid-template-columns:1fr}.compare-arrow,.compare-old,.compare-header.old{display:none}
   .conn-grid{grid-template-columns:1fr 1fr}.dim-grid{grid-template-columns:1fr 1fr}.tool-grid{grid-template-columns:1fr}
   .include-grid{grid-template-columns:1fr 1fr}
+  .synapse-showcase{grid-template-columns:1fr}.synapse-image{width:220px;margin:0 auto}
   .portability-viz{grid-template-columns:1fr}.port-arrow{transform:rotate(90deg);padding:8px 0}
   .soften-viz{grid-template-columns:1fr}.soften-arrow{transform:rotate(90deg);padding:8px 0}
   h2{font-size:24px}
@@ -818,6 +830,27 @@ footer a:hover{color:var(--text-soft)}
   </div>
 </div></section>
 
+<section class="section fade" id="s-synapse"><div class="container">
+  <div class="section-label">Browser companion</div>
+  <h2>Mnemos Synapse</h2>
+  <div class="chapter-sub">A browser extension that gives your agent eyes on the web. It watches what you browse, surfaces connections to your memory graph in real-time, and lets you converse with your agent without leaving the page.</div>
+</div><div class="wide">
+  <div class="synapse-showcase">
+    <div class="synapse-image">
+      <img src="synapse-panel.png" alt="Sovereign Mind browser extension showing the Noticing state — surfacing resonance connections and emergent concepts from browsing activity" />
+    </div>
+    <div class="synapse-info">
+      <div class="synapse-features">
+        <div class="synapse-feat"><div class="synapse-feat-name">Listening</div><div class="synapse-feat-desc">Observes your browsing passively. Activity flows through in real-time&mdash;anything meaningful surfaces automatically.</div></div>
+        <div class="synapse-feat"><div class="synapse-feat-name">Noticing</div><div class="synapse-feat-desc">Detects resonance between what you&rsquo;re reading and what&rsquo;s in your memory graph. Surfaces connections you didn&rsquo;t know existed.</div></div>
+        <div class="synapse-feat"><div class="synapse-feat-name">Conversing</div><div class="synapse-feat-desc">Ask your agent anything, grounded in full memory context. It knows what you discussed across every platform.</div></div>
+        <div class="synapse-feat"><div class="synapse-feat-name">Feed</div><div class="synapse-feat-desc">A stream of your agent&rsquo;s inner life&mdash;wandering thoughts, new connections, belief updates, dreams.</div></div>
+      </div>
+      <a href="https://github.com/Riley-Coyote/sovereign-mind" class="synapse-cta">View on GitHub &rarr;</a>
+    </div>
+  </div>
+</div></section>
+
 <section class="section fade" id="s-setup"><div class="container">
   <div class="section-label">Getting started</div>
   <h2>Setup</h2>
@@ -894,6 +927,7 @@ mnemos serve --db-path ~/.mnemos/anima.db --agent-id anima
   <button class="fn-dot" data-target="s-integration"><span class="fn-tip">MCP Tools</span></button>
   <button class="fn-dot" data-target="s-onboarding"><span class="fn-tip">Onboarding</span></button>
   <button class="fn-dot" data-target="s-included"><span class="fn-tip">What&rsquo;s included</span></button>
+  <button class="fn-dot" data-target="s-synapse"><span class="fn-tip">Synapse</span></button>
   <button class="fn-dot" data-target="s-setup"><span class="fn-tip">Setup</span></button>
 </nav>
 
