@@ -52,7 +52,7 @@ body{background:var(--bg-void);min-height:100vh}
 .container{max-width:var(--prose-width);margin:0 auto;padding:0 28px}
 .wide{max-width:var(--wide-width);margin:0 auto;padding:0 28px}
 
-h2{font-size:28px;font-weight:300;color:var(--ink);letter-spacing:-0.01em;line-height:1.2;margin-bottom:8px}
+h2{font-size:28px;font-weight:300;color:var(--ink);letter-spacing:-0.01em;line-height:1.2;margin-bottom:8px;text-shadow:0 0 40px rgba(220,219,216,0.06)}
 h3{font-family:var(--font-mono);font-size:13px;font-weight:500;color:var(--text-primary);margin-top:48px;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.04em}
 p{font-size:14px;color:var(--text-secondary);line-height:1.65;max-width:var(--prose-width);margin-bottom:18px}
 p strong{color:var(--text-primary);font-weight:500}
@@ -60,7 +60,8 @@ p em{font-style:italic;color:var(--text-soft)}
 a{color:var(--text-body);text-decoration:none;border-bottom:1px solid var(--border-strong);transition:all var(--dur-fast) var(--ease-out)}
 a:hover{color:var(--ink);border-color:var(--text-soft)}
 
-.section{padding:80px 0}
+.section{padding:80px 0;position:relative}
+.section::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:400px;height:1px;background:radial-gradient(ellipse,rgba(220,219,216,0.08) 0%,transparent 70%)}
 .section+.section{border-top:1px solid var(--border-subtle)}
 
 .section-label{font-family:var(--font-mono);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);margin-bottom:16px;display:flex;align-items:center;gap:12px}
@@ -237,7 +238,8 @@ footer a:hover{color:var(--text-soft)}
 .graph-specimen{background:var(--bg-deep);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:40px 32px 28px;margin:36px 0;position:relative;overflow:hidden}
 .graph-specimen::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:radial-gradient(ellipse 55% 160% at 12% 0%,rgba(220,218,214,var(--pa1)) 0%,transparent 65%),radial-gradient(ellipse 50% 160% at 50% 0%,rgba(220,218,214,var(--pa2)) 0%,transparent 65%),radial-gradient(ellipse 55% 160% at 88% 0%,rgba(220,218,214,var(--pa3)) 0%,transparent 65%),radial-gradient(ellipse 50% 160% at 85% 100%,rgba(220,218,214,var(--pa4)) 0%,transparent 65%),radial-gradient(ellipse 55% 160% at 48% 100%,rgba(220,218,214,var(--pa5)) 0%,transparent 65%),radial-gradient(ellipse 50% 160% at 15% 100%,rgba(220,218,214,var(--pa6)) 0%,transparent 65%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:pool-a1 5s ease-in-out infinite,pool-a2 7s ease-in-out infinite,pool-a3 9s ease-in-out infinite,pool-a4 11s ease-in-out infinite,pool-a5 13s ease-in-out infinite,pool-a6 8s ease-in-out infinite;pointer-events:none}
 .graph-specimen .specimen-tag{position:absolute;top:12px;right:16px;font-family:var(--font-mono);font-size:8px;color:var(--text-whisper);text-transform:uppercase;letter-spacing:0.1em}
-.graph-svg{display:block;width:100%;height:auto}
+.graph-svg{display:none}
+.graph-canvas{display:block;width:100%;height:440px}
 .graph-caption{font-family:var(--font-mono);font-size:8px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-whisper);text-align:center;margin-top:16px}
 .g-hop-ring{fill:none;stroke:rgba(220,219,216,0.02);stroke-width:0.5;stroke-dasharray:2 4}
 .g-atmo{fill:url(#atmoGrad);opacity:0;transition:opacity 1s ease}
@@ -510,38 +512,7 @@ footer a:hover{color:var(--text-soft)}
 </div><div class="wide">
   <div class="graph-specimen" id="graphWrap">
     <span class="specimen-tag">Spreading Activation</span>
-    <svg class="graph-svg" viewBox="0 0 720 440" width="720" height="440">
-      <defs>
-        <radialGradient id="atmoGrad" cx="50%" cy="52%" r="30%"><stop offset="0%" stop-color="rgba(244,243,240,0.025)"/><stop offset="100%" stop-color="transparent"/></radialGradient>
-      </defs>
-      <circle cx="360" cy="228" r="100" class="g-hop-ring"/>
-      <circle cx="360" cy="228" r="185" class="g-hop-ring"/>
-      <circle cx="360" cy="228" r="265" class="g-hop-ring"/>
-      <circle cx="360" cy="228" r="140" class="g-atmo"/>
-      <g class="h1 g-edge"><path d="M360,228 Q280,168 195,130" class="g-line"/><text x="268" y="170" class="g-type">supports</text></g>
-      <g class="h1 g-edge"><path d="M360,228 Q445,172 530,138" class="g-line"/><text x="454" y="174" class="g-type">extends</text></g>
-      <g class="h1 g-edge"><path d="M360,228 Q255,275 185,315" class="g-line"/><text x="260" y="278" class="g-type">parallels</text></g>
-      <g class="h1 g-edge"><path d="M360,228 Q460,275 540,312" class="g-line"/><text x="458" y="278" class="g-type">grounds</text></g>
-      <g class="h2 g-edge"><path d="M185,315 Q110,282 72,228" class="g-line"/><text x="112" y="280" class="g-type">causes</text></g>
-      <g class="h2 g-edge"><path d="M195,130 Q260,72 355,58" class="g-line"/><text x="262" y="80" class="g-type">synthesizes</text></g>
-      <g class="h2 g-edge"><path d="M530,138 Q455,82 355,58" class="g-line"/><text x="456" y="88" class="g-type">supports</text></g>
-      <g class="h2 g-edge"><path d="M540,312 Q610,280 655,228" class="g-line"/><text x="610" y="278" class="g-type">extends</text></g>
-      <g class="h3 g-edge"><path d="M355,58 Q430,38 518,55" class="g-line"/><text x="436" y="36" class="g-type">parallels</text></g>
-      <g class="g-node h1"><circle cx="195" cy="130" r="7" class="g-ring"/><circle cx="195" cy="130" r="1.5" class="g-dot"/><text x="195" y="115" class="g-label">dark mode</text></g>
-      <g class="g-node h1"><circle cx="530" cy="138" r="7" class="g-ring"/><circle cx="530" cy="138" r="1.5" class="g-dot"/><text x="530" y="123" class="g-label">color system</text></g>
-      <g class="g-node h1"><circle cx="185" cy="315" r="7" class="g-ring"/><circle cx="185" cy="315" r="1.5" class="g-dot"/><text x="185" y="335" class="g-label">typography</text></g>
-      <g class="g-node h1"><circle cx="540" cy="312" r="7" class="g-ring"/><circle cx="540" cy="312" r="1.5" class="g-dot"/><text x="540" y="332" class="g-label">craft aesthetic</text></g>
-      <g class="g-node h2"><circle cx="72" cy="228" r="5.5" class="g-ring"/><circle cx="72" cy="228" r="1.5" class="g-dot"/><text x="72" y="248" class="g-label">photography</text></g>
-      <g class="g-node h2"><circle cx="355" cy="58" r="5.5" class="g-ring"/><circle cx="355" cy="58" r="1.5" class="g-dot"/><text x="355" y="45" class="g-label">minimalism</text></g>
-      <g class="g-node h2"><circle cx="655" cy="228" r="5.5" class="g-ring"/><circle cx="655" cy="228" r="1.5" class="g-dot"/><text x="655" y="248" class="g-label">tool philosophy</text></g>
-      <g class="g-node h3"><circle cx="518" cy="55" r="4.5" class="g-ring"/><circle cx="518" cy="55" r="1.5" class="g-dot"/><text x="518" y="42" class="g-label">interface patterns</text></g>
-      <g class="g-node g-cue">
-        <circle cx="360" cy="228" r="16" class="g-outer"/>
-        <circle cx="360" cy="228" r="10" class="g-ring"/>
-        <circle cx="360" cy="228" r="2.5" class="g-dot"/>
-        <text x="360" y="254" class="g-label" style="font-size:10px;letter-spacing:0.05em">query: visual design</text>
-      </g>
-    </svg>
+    <canvas class="graph-canvas" id="graphCanvas"></canvas>
     <div class="graph-caption">Spreading activation from a retrieval cue &mdash; brightness indicates activation strength across three hops</div>
   </div>
   <div class="conn-grid">
@@ -937,9 +908,260 @@ mnemos serve --db-path ~/.mnemos/anima.db --agent-id anima
 const obs=new IntersectionObserver(e=>{e.forEach(n=>{if(n.isIntersecting){n.target.classList.add('vis');obs.unobserve(n.target)}})},{threshold:0.08});
 document.querySelectorAll('.fade').forEach(el=>obs.observe(el));
 
-const gw=document.getElementById('graphWrap');
-if(gw){const go=new IntersectionObserver(e=>{e.forEach(n=>{if(n.isIntersecting){setTimeout(()=>gw.classList.add('graph-active'),200);go.unobserve(n.target)}})},{threshold:0.3});go.observe(gw)}
+/* ── Spreading Activation Canvas ── */
+(function(){
+  const canvas=document.getElementById('graphCanvas');
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const wrap=document.getElementById('graphWrap');
+  let dpr=window.devicePixelRatio||1;
+  let W,H;
+  const BASE_W=720,BASE_H=440;
 
+  function resize(){
+    const rect=canvas.parentElement.getBoundingClientRect();
+    W=rect.width-64; // account for padding
+    H=440;
+    canvas.width=W*dpr;
+    canvas.height=H*dpr;
+    canvas.style.width=W+'px';
+    canvas.style.height=H+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  resize();
+  window.addEventListener('resize',resize);
+
+  function sx(x){return(x/BASE_W)*W}
+  function sy(y){return(y/BASE_H)*H}
+
+  // Node definitions — same positions as original SVG
+  const nodes=[
+    {id:'query',label:'query: visual design',ox:360,oy:228,hop:0,r:10,outerR:16},
+    {id:'darkmode',label:'dark mode',ox:195,oy:130,hop:1,r:7},
+    {id:'color',label:'color system',ox:530,oy:138,hop:1,r:7},
+    {id:'typo',label:'typography',ox:185,oy:315,hop:1,r:7},
+    {id:'craft',label:'craft aesthetic',ox:540,oy:312,hop:1,r:7},
+    {id:'photo',label:'photography',ox:72,oy:228,hop:2,r:5.5},
+    {id:'minimal',label:'minimalism',ox:355,oy:58,hop:2,r:5.5},
+    {id:'tool',label:'tool philosophy',ox:655,oy:228,hop:2,r:5.5},
+    {id:'iface',label:'interface patterns',ox:518,oy:55,hop:3,r:4.5}
+  ];
+
+  // Edge definitions with control points
+  const edges=[
+    {from:'query',to:'darkmode',type:'supports',hop:1,cx:280,cy:168,tx:268,ty:170},
+    {from:'query',to:'color',type:'extends',hop:1,cx:445,cy:172,tx:454,ty:174},
+    {from:'query',to:'typo',type:'parallels',hop:1,cx:255,cy:275,tx:260,ty:278},
+    {from:'query',to:'craft',type:'grounds',hop:1,cx:460,cy:275,tx:458,ty:278},
+    {from:'typo',to:'photo',type:'causes',hop:2,cx:110,cy:282,tx:112,ty:280},
+    {from:'darkmode',to:'minimal',type:'synthesizes',hop:2,cx:260,cy:72,tx:262,ty:80},
+    {from:'color',to:'minimal',type:'supports',hop:2,cx:455,cy:82,tx:456,ty:88},
+    {from:'craft',to:'tool',type:'extends',hop:2,cx:610,cy:280,tx:610,ty:278},
+    {from:'minimal',to:'iface',type:'parallels',hop:3,cx:430,cy:38,tx:436,ty:36}
+  ];
+
+  // Hop rings
+  const hopRings=[100,185,265];
+
+  // Particles
+  const particles=[];
+  for(let i=0;i<18;i++){
+    particles.push({
+      x:Math.random()*BASE_W,
+      y:Math.random()*BASE_H,
+      vx:(Math.random()-0.5)*0.15,
+      vy:(Math.random()-0.5)*0.12,
+      alpha:Math.random()*0.15+0.03,
+      size:Math.random()*0.8+0.3
+    });
+  }
+
+  // Animation state
+  let activated=false;
+  let activationStart=0;
+  let animFrame=null;
+  const HOP_DELAY=400; // ms per hop
+
+  function getNodeById(id){return nodes.find(n=>n.id===id)}
+
+  function getActivation(hop,elapsed){
+    if(!activated)return 0;
+    const delay=hop*HOP_DELAY;
+    const t=Math.max(0,elapsed-delay);
+    return Math.min(1,t/HOP_DELAY);
+  }
+
+  function draw(now){
+    const elapsed=activated?(now-activationStart):0;
+    ctx.clearRect(0,0,W,H);
+
+    // Ambient atmosphere glow behind center
+    if(activated){
+      const a0=getActivation(0,elapsed);
+      const grad=ctx.createRadialGradient(sx(360),sy(228),0,sx(360),sy(228),sx(160));
+      grad.addColorStop(0,'rgba(244,243,240,'+(0.04*a0)+')');
+      grad.addColorStop(0.5,'rgba(244,243,240,'+(0.015*a0)+')');
+      grad.addColorStop(1,'transparent');
+      ctx.fillStyle=grad;
+      ctx.beginPath();
+      ctx.arc(sx(360),sy(228),sx(160),0,Math.PI*2);
+      ctx.fill();
+    }
+
+    // Hop rings — concentric dashed circles
+    hopRings.forEach(r=>{
+      ctx.beginPath();
+      ctx.arc(sx(360),sy(228),sx(r),0,Math.PI*2);
+      ctx.strokeStyle='rgba(220,219,216,0.02)';
+      ctx.lineWidth=0.5;
+      ctx.setLineDash([2*W/BASE_W,4*W/BASE_W]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+
+    // Particles
+    particles.forEach(p=>{
+      p.x+=p.vx;
+      p.y+=p.vy;
+      if(p.x<0)p.x=BASE_W;
+      if(p.x>BASE_W)p.x=0;
+      if(p.y<0)p.y=BASE_H;
+      if(p.y>BASE_H)p.y=0;
+      ctx.beginPath();
+      ctx.arc(sx(p.x),sy(p.y),p.size*(W/BASE_W),0,Math.PI*2);
+      ctx.fillStyle='rgba(220,219,216,'+p.alpha+')';
+      ctx.fill();
+    });
+
+    // Edges — soft glowing lines
+    edges.forEach(e=>{
+      const fromN=getNodeById(e.from);
+      const toN=getNodeById(e.to);
+      const a=getActivation(e.hop,elapsed);
+
+      // base line
+      const baseAlpha=0.025;
+      const activeAlpha=e.hop===1?0.09:e.hop===2?0.05:0.035;
+      const alpha=baseAlpha+(activeAlpha-baseAlpha)*a;
+
+      // Glow layer
+      if(a>0.1){
+        ctx.beginPath();
+        ctx.moveTo(sx(fromN.ox),sy(fromN.oy));
+        ctx.quadraticCurveTo(sx(e.cx),sy(e.cy),sx(toN.ox),sy(toN.oy));
+        ctx.strokeStyle='rgba(220,219,216,'+(alpha*0.5)+')';
+        ctx.lineWidth=3*(W/BASE_W);
+        ctx.stroke();
+      }
+
+      // Core line
+      ctx.beginPath();
+      ctx.moveTo(sx(fromN.ox),sy(fromN.oy));
+      ctx.quadraticCurveTo(sx(e.cx),sy(e.cy),sx(toN.ox),sy(toN.oy));
+      ctx.strokeStyle='rgba(220,219,216,'+alpha+')';
+      ctx.lineWidth=0.5*(W/BASE_W);
+      ctx.stroke();
+
+      // Edge type label
+      const labelAlpha=a*(e.hop===1?0.18:e.hop===2?0.10:0.08);
+      if(labelAlpha>0.01){
+        ctx.font=(7*(W/BASE_W))+'px "SF Mono","JetBrains Mono",monospace';
+        ctx.fillStyle='rgba(220,219,216,'+labelAlpha+')';
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        ctx.fillText(e.type,sx(e.tx),sy(e.ty));
+      }
+    });
+
+    // Nodes
+    const pulsePhase=Math.sin(now*0.003)*0.5+0.5; // 0..1 gentle pulse
+    nodes.forEach(n=>{
+      const a=getActivation(n.hop,elapsed);
+      const x=sx(n.ox),y=sy(n.oy),r=n.r*(W/BASE_W);
+
+      // Radial glow around node
+      if(a>0.05){
+        const glowR=r*(n.hop===0?5.5:n.hop===1?4:3);
+        const glowAlpha=a*(n.hop===0?0.14:n.hop===1?0.09:0.05);
+        // For query node, add pulsing
+        const pulseMultiplier=n.hop===0?(0.75+0.25*pulsePhase):1;
+        const grad=ctx.createRadialGradient(x,y,0,x,y,glowR*pulseMultiplier);
+        grad.addColorStop(0,'rgba(244,243,240,'+(glowAlpha*1.2)+')');
+        grad.addColorStop(0.35,'rgba(244,243,240,'+(glowAlpha*0.5)+')');
+        grad.addColorStop(0.7,'rgba(220,219,216,'+(glowAlpha*0.15)+')');
+        grad.addColorStop(1,'transparent');
+        ctx.fillStyle=grad;
+        ctx.beginPath();
+        ctx.arc(x,y,glowR*pulseMultiplier,0,Math.PI*2);
+        ctx.fill();
+      }
+
+      // Outer ring for query node
+      if(n.outerR){
+        const outerR=n.outerR*(W/BASE_W);
+        ctx.beginPath();
+        ctx.arc(x,y,outerR,0,Math.PI*2);
+        ctx.strokeStyle=a>0?'rgba(220,219,216,'+(0.04+0.04*a)+')':'rgba(220,219,216,0.04)';
+        ctx.lineWidth=(0.5+0.25*a)*(W/BASE_W);
+        ctx.stroke();
+      }
+
+      // Ring (outer circle)
+      const ringAlphaBase=0.08;
+      const ringAlphaMap={0:0.42,1:0.22,2:0.10,3:0.08};
+      const ringA=ringAlphaBase+(ringAlphaMap[n.hop]-ringAlphaBase)*a;
+      ctx.beginPath();
+      ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fillStyle='rgba(18,18,21,1)'; // bg-deep fill
+      ctx.fill();
+      ctx.strokeStyle='rgba(220,219,216,'+ringA+')';
+      ctx.lineWidth=(0.75+0.25*a)*(W/BASE_W);
+      ctx.stroke();
+
+      // Inner dot
+      const dotAlphaMap={0:0.88,1:0.42,2:0.22,3:0.10};
+      const dotBaseAlpha=0.06;
+      const dotA=dotBaseAlpha+(dotAlphaMap[n.hop]-dotBaseAlpha)*a;
+      const dotR=(n.hop===0?2.5:1.5)*(W/BASE_W);
+      ctx.beginPath();
+      ctx.arc(x,y,dotR,0,Math.PI*2);
+      ctx.fillStyle='rgba(220,219,216,'+dotA+')';
+      ctx.fill();
+
+      // Label
+      const labelAlphaMap={0:0.88,1:0.34,2:0.18,3:0.18};
+      const labelBase=0.18;
+      const labelA=labelBase+(labelAlphaMap[n.hop]-labelBase)*a;
+      const fontSize=n.hop===0?10:9;
+      ctx.font=(fontSize*(W/BASE_W))+'px "SF Mono","JetBrains Mono",monospace';
+      ctx.fillStyle='rgba(244,243,240,'+labelA+')';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      // Position labels: query below, hop3 above, hop1/2 use original offsets
+      const labelY=n.hop===0?y+r+14*(W/BASE_W):
+                   n.id==='typo'?y+20*(W/BASE_W):
+                   n.id==='craft'?y+20*(W/BASE_W):
+                   n.id==='photo'?y+20*(W/BASE_W):
+                   n.id==='tool'?y+20*(W/BASE_W):
+                   y-r-8*(W/BASE_W);
+      ctx.fillText(n.label,x,labelY);
+    });
+
+    animFrame=requestAnimationFrame(draw);
+  }
+
+  // Start the render loop immediately (shows idle state)
+  animFrame=requestAnimationFrame(draw);
+
+  // Trigger activation when scrolled into view
+  const graphObs=new IntersectionObserver(e=>{e.forEach(n=>{if(n.isIntersecting&&!activated){
+    setTimeout(()=>{activated=true;activationStart=performance.now()},200);
+    graphObs.unobserve(n.target);
+  }})},{threshold:0.3});
+  graphObs.observe(wrap);
+})();
+
+/* ── Float nav & section observers ── */
 const fnav=document.getElementById('floatNav');
 const fdots=document.querySelectorAll('.fn-dot[data-target]');
 const secs=[];
