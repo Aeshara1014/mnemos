@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hypomnema in Mnemos</title>
+  <link rel="icon" href="data:," />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090a0a;
+      --panel: #101111;
+      --panel-2: #151514;
+      --line: rgba(255, 255, 255, 0.12);
+      --line-strong: rgba(255, 255, 255, 0.22);
+      --text: #f1eee7;
+      --muted: rgba(241, 238, 231, 0.66);
+      --soft: rgba(241, 238, 231, 0.44);
+      --warm: #c9a87c;
+      --warm-soft: rgba(201, 168, 124, 0.16);
+      --cyan: #86b8c2;
+      --cyan-soft: rgba(134, 184, 194, 0.14);
+      --green: #9fb78c;
+      --green-soft: rgba(159, 183, 140, 0.14);
+      --violet: #a996c9;
+      --violet-soft: rgba(169, 150, 201, 0.14);
+      --mono: "SFMono-Regular", "JetBrains Mono", Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --serif: "Cormorant Garamond", Georgia, serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(201, 168, 124, 0.06), transparent 28rem),
+        radial-gradient(circle at 18% 18%, rgba(134, 184, 194, 0.10), transparent 22rem),
+        #090a0a;
+      color: var(--text);
+      font-family: var(--sans);
+      letter-spacing: 0;
+    }
+
+    a { color: inherit; }
+
+    .shell {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+    }
+
+    header {
+      min-height: 86vh;
+      display: grid;
+      align-items: end;
+      padding: 68px 0 40px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow,
+    .kicker,
+    .chip,
+    .label,
+    .caption,
+    .metric-label {
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 11px;
+    }
+
+    .eyebrow {
+      color: var(--warm);
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(54px, 8vw, 118px);
+      line-height: 0.86;
+      font-weight: 500;
+    }
+
+    .lead {
+      max-width: 760px;
+      margin: 28px 0 0;
+      color: var(--muted);
+      font-size: clamp(18px, 2vw, 24px);
+      line-height: 1.45;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 34px;
+      align-items: end;
+    }
+
+    .hero-card {
+      border: 1px solid var(--line);
+      background: rgba(15, 16, 15, 0.74);
+      padding: 22px;
+      border-radius: 8px;
+      min-height: 270px;
+    }
+
+    .stack-preview {
+      display: grid;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .stack-row {
+      display: grid;
+      grid-template-columns: 108px 1fr;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .stack-row strong {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .stack-row span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    section {
+      padding: 76px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 40px;
+      margin-bottom: 34px;
+    }
+
+    h2 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(36px, 5vw, 64px);
+      line-height: 0.95;
+      font-weight: 500;
+    }
+
+    .section-copy {
+      margin: 0;
+      max-width: 740px;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.62;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .layer {
+      min-height: 310px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      background: var(--panel);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .layer:before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-top: 2px solid var(--accent);
+      opacity: 0.9;
+      pointer-events: none;
+    }
+
+    .layer.functional { --accent: var(--cyan); }
+    .layer.hypomnema { --accent: var(--warm); background: linear-gradient(180deg, var(--warm-soft), var(--panel) 46%); }
+    .layer.mnemos { --accent: var(--green); }
+
+    .layer h3 {
+      margin: 10px 0 12px;
+      font-size: 21px;
+      font-weight: 600;
+    }
+
+    .layer p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .layer ul {
+      padding: 0;
+      margin: 28px 0 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+
+    .layer li {
+      display: grid;
+      grid-template-columns: 9px 1fr;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.42;
+    }
+
+    .layer li:before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      margin-top: 6px;
+      border-radius: 99px;
+      background: var(--accent);
+    }
+
+    .flow-board {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--muted);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    button[aria-pressed="true"] {
+      color: var(--text);
+      border-color: rgba(201, 168, 124, 0.72);
+      background: var(--warm-soft);
+    }
+
+    .flow-stage {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 18px;
+      min-height: 420px;
+    }
+
+    .stage-note {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: rgba(0, 0, 0, 0.18);
+    }
+
+    .stage-note h3 {
+      margin: 0 0 12px;
+      font-size: 24px;
+    }
+
+    .stage-note p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.52;
+    }
+
+    .stage-note code {
+      display: block;
+      white-space: pre-wrap;
+      color: var(--warm);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      background: rgba(201, 168, 124, 0.07);
+      border: 1px solid rgba(201, 168, 124, 0.18);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .diagram {
+      position: relative;
+      min-height: 420px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px),
+        rgba(8, 9, 9, 0.62);
+      background-size: 34px 34px;
+      overflow: hidden;
+    }
+
+    .node {
+      position: absolute;
+      width: 168px;
+      min-height: 86px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 12px;
+      background: rgba(16, 17, 17, 0.92);
+      transition: transform 260ms ease, border-color 260ms ease, background 260ms ease;
+    }
+
+    .node .label {
+      color: var(--soft);
+      margin-bottom: 8px;
+    }
+
+    .node strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+
+    .node span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.32;
+    }
+
+    .node.active {
+      transform: translateY(-4px);
+      border-color: rgba(201, 168, 124, 0.8);
+      background: rgba(39, 32, 24, 0.94);
+    }
+
+    .n-session { left: 7%; top: 38%; }
+    .n-scope { left: 31%; top: 13%; }
+    .n-hypo { left: 42%; top: 44%; width: 210px; min-height: 104px; }
+    .n-audit { left: 68%; top: 16%; }
+    .n-mnemos { left: 70%; top: 55%; }
+
+    svg.wires {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .wire {
+      fill: none;
+      stroke: rgba(241, 238, 231, 0.20);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 8;
+    }
+
+    .wire.hot {
+      stroke: var(--warm);
+      stroke-width: 2.4;
+      stroke-dasharray: none;
+      filter: drop-shadow(0 0 12px rgba(201, 168, 124, 0.30));
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .matrix-card,
+    .tool-card,
+    .schema-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 18px;
+    }
+
+    .matrix-card h3,
+    .tool-card h3,
+    .schema-card h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .matrix-card p,
+    .tool-card p,
+    .schema-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .tools {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .tool-card {
+      min-height: 150px;
+    }
+
+    .tool-card code {
+      display: inline-block;
+      color: var(--warm);
+      font-family: var(--mono);
+      font-size: 12px;
+      margin-bottom: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .schema-strip {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .schema-card {
+      min-height: 128px;
+    }
+
+    .schema-card .metric-label {
+      color: var(--soft);
+      margin-bottom: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    .closing {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .closing blockquote {
+      margin: 0;
+      border-left: 2px solid var(--warm);
+      padding: 24px;
+      background: var(--warm-soft);
+      border-radius: 8px;
+      font-family: var(--serif);
+      font-size: clamp(30px, 4vw, 54px);
+      line-height: 1.02;
+    }
+
+    .closing .summary {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px;
+      background: var(--panel);
+      color: var(--muted);
+      line-height: 1.62;
+      font-size: 17px;
+    }
+
+    footer {
+      padding: 30px 0 54px;
+      color: var(--soft);
+      font-family: var(--mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    @media (max-width: 920px) {
+      header { min-height: auto; }
+      .hero-grid,
+      .section-head,
+      .flow-stage,
+      .closing {
+        grid-template-columns: 1fr;
+      }
+      .pipeline,
+      .tools,
+      .matrix {
+        grid-template-columns: 1fr;
+      }
+      .schema-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .diagram { min-height: 590px; }
+      .node { width: min(78vw, 260px); left: 50%; transform: translateX(-50%); }
+      .node.active { transform: translateX(-50%) translateY(-4px); }
+      .n-session { top: 5%; }
+      .n-scope { top: 23%; }
+      .n-hypo { top: 42%; width: min(78vw, 280px); }
+      .n-audit { top: 63%; }
+      .n-mnemos { top: 81%; }
+      svg.wires { opacity: 0.38; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="shell hero-grid">
+      <div>
+        <div class="eyebrow">Mnemos MCP / hypomnema layer</div>
+        <h1>Continuity before memory becomes doctrine.</h1>
+        <p class="lead">Hypomnema is the scoped notebook of the relationship: durable enough to survive sessions, humble enough to revise, and explicit enough to promote only when it has earned a place in Mnemos.</p>
+      </div>
+      <aside class="hero-card">
+        <div class="kicker">Where it sits</div>
+        <div class="stack-preview">
+          <div class="stack-row">
+            <strong>Functional</strong>
+            <span>Hot session facts, commitments, and working recall.</span>
+          </div>
+          <div class="stack-row">
+            <strong>Hypomnema</strong>
+            <span>Scoped continuity for an agent, person, and project.</span>
+          </div>
+          <div class="stack-row">
+            <strong>Mnemos</strong>
+            <span>Engrams, beliefs, connections, reconsolidation, and substrate.</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="shell">
+        <div class="section-head">
+          <div class="kicker">The distinction</div>
+          <p class="section-copy">Mnemos remembers by changing the graph. Hypomnema does something quieter first: it holds continuity in a scoped, revisable form. It is where an agent can keep track of what it is learning with a particular person or project without prematurely turning that material into a general memory, a belief, or a shared engram.</p>
+        </div>
+        <div class="pipeline">
+          <article class="layer functional">
+            <div class="label">Layer 01</div>
+            <h3>Functional memory</h3>
+            <p>The short-lived working surface for the current session.</p>
+            <ul>
+              <li>Active task and immediate constraints.</li>
+              <li>Fresh commitments and clarifications.</li>
+              <li>Usually consolidated or cleared after the session.</li>
+            </ul>
+          </article>
+          <article class="layer hypomnema">
+            <div class="label">Layer 02</div>
+            <h3>Hypomnema</h3>
+            <p>The relationship-scoped continuity layer.</p>
+            <ul>
+              <li>Bound to agent_id, person_id, and project_scope.</li>
+              <li>Stores confidence, salience, domain, source, and revision history.</li>
+              <li>Can be revised or superseded before promotion.</li>
+            </ul>
+          </article>
+          <article class="layer mnemos">
+            <div class="label">Layer 03</div>
+            <h3>Mnemos engrams</h3>
+            <p>The living graph and substrate.</p>
+            <ul>
+              <li>Connections, beliefs, retrieval, and reconsolidation.</li>
+              <li>Useful for stable, de-identified, long-arc material.</li>
+              <li>Changes when remembered.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell">
+        <div class="section-head">
+          <div class="kicker">Interactive flow</div>
+          <p class="section-copy">A hypomnema entry moves through five states. The important thing is the pause: the system can carry continuity without pretending every note is already a settled memory.</p>
+        </div>
+        <div class="flow-board">
+          <div class="controls" role="group" aria-label="Hypomnema flow stages">
+            <button type="button" aria-pressed="true" data-stage="capture">Capture</button>
+            <button type="button" aria-pressed="false" data-stage="scope">Scope</button>
+            <button type="button" aria-pressed="false" data-stage="revise">Revise</button>
+            <button type="button" aria-pressed="false" data-stage="retrieve">Retrieve</button>
+            <button type="button" aria-pressed="false" data-stage="promote">Promote</button>
+          </div>
+          <div class="flow-stage">
+            <aside class="stage-note">
+              <h3 id="stage-title">Capture</h3>
+              <p id="stage-copy">A session produces something worth carrying forward, but not necessarily something ready to become a Mnemos engram.</p>
+              <code id="stage-code">mnemos_hypomnema_write(
+  content="This project keeps functional memory, hypomnema, and Mnemos distinct.",
+  source="observed",
+  domain="foundational"
+)</code>
+            </aside>
+            <div class="diagram" aria-label="Hypomnema integration diagram">
+              <svg class="wires" viewBox="0 0 900 520" preserveAspectRatio="none" aria-hidden="true">
+                <path class="wire w-session-hypo hot" d="M150 250 C270 250 340 280 430 280" />
+                <path class="wire w-scope-hypo" d="M360 115 C420 165 440 210 470 265" />
+                <path class="wire w-hypo-audit" d="M560 265 C640 210 655 155 710 120" />
+                <path class="wire w-hypo-mnemos" d="M570 315 C650 360 690 375 755 360" />
+                <path class="wire w-mnemos-hypo" d="M755 420 C650 475 500 440 470 345" />
+              </svg>
+              <div class="node n-session active" data-node="capture">
+                <div class="label">Session</div>
+                <strong>Functional memory</strong>
+                <span>Hot facts and commitments from the current work.</span>
+              </div>
+              <div class="node n-scope" data-node="scope">
+                <div class="label">Scope</div>
+                <strong>agent / person / project</strong>
+                <span>Continuity remains local to the relationship.</span>
+              </div>
+              <div class="node n-hypo" data-node="retrieve">
+                <div class="label">Hypomnema</div>
+                <strong>What I am sitting with</strong>
+                <span>Durable continuity with source, confidence, salience, and domain.</span>
+              </div>
+              <div class="node n-audit" data-node="revise">
+                <div class="label">Audit</div>
+                <strong>Revise or supersede</strong>
+                <span>Old versions remain visible without steering active recall.</span>
+              </div>
+              <div class="node n-mnemos" data-node="promote">
+                <div class="label">Mnemos</div>
+                <strong>Promoted engram</strong>
+                <span>Stable continuity enters the graph and can reconsolidate.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell">
+        <div class="section-head">
+          <div class="kicker">When to use it</div>
+          <p class="section-copy">Hypomnema is not a replacement for Mnemos. It is a buffer against overconfident memory formation, and a way to make continuity legible without freezing it too early.</p>
+        </div>
+        <div class="matrix">
+          <article class="matrix-card">
+            <h3>Use hypomnema when the knowledge is relational.</h3>
+            <p>Preferences, collaboration patterns, open threads, unresolved tensions, project-specific language, and continuity that matters only inside a particular relationship belong here first.</p>
+          </article>
+          <article class="matrix-card">
+            <h3>Use Mnemos when the knowledge has stabilized.</h3>
+            <p>After a hypomnema entry becomes high-confidence, high-salience, foundational or revised, it can graduate into a de-identified engram.</p>
+          </article>
+          <article class="matrix-card">
+            <h3>Revise rather than overwrite.</h3>
+            <p>Continuity changes. The system keeps revision history so the agent can remember how its understanding shifted, not just the latest wording.</p>
+          </article>
+          <article class="matrix-card">
+            <h3>Supersede when old continuity should stop steering.</h3>
+            <p>A superseded entry remains in the audit trail but leaves active retrieval, which prevents stale context from speaking through the agent.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell">
+        <div class="section-head">
+          <div class="kicker">MCP surface</div>
+          <p class="section-copy">The new Mnemos MCP tools expose the layer directly. Agents can write continuity, search it, improve it, replace it, inspect promotion candidates, and explicitly graduate stable entries into Mnemos.</p>
+        </div>
+        <div class="tools">
+          <article class="tool-card">
+            <code>mnemos_hypomnema_write</code>
+            <h3>Capture continuity</h3>
+            <p>Creates scoped entries with source, domain, tags, confidence, salience, density, and optional provenance.</p>
+          </article>
+          <article class="tool-card">
+            <code>mnemos_hypomnema_search</code>
+            <h3>Load context</h3>
+            <p>Returns entries by lexical relevance, confidence, salience, and foundational weight.</p>
+          </article>
+          <article class="tool-card">
+            <code>mnemos_hypomnema_revise</code>
+            <h3>Sharpen without erasing</h3>
+            <p>Updates content while preserving the prior version and the reason for change.</p>
+          </article>
+          <article class="tool-card">
+            <code>mnemos_hypomnema_supersede</code>
+            <h3>Retire stale context</h3>
+            <p>Creates a successor entry and moves the original out of active retrieval.</p>
+          </article>
+          <article class="tool-card">
+            <code>mnemos_hypomnema_candidates</code>
+            <h3>Find graduation-ready entries</h3>
+            <p>Lists active entries above confidence and salience thresholds that are revised or foundational.</p>
+          </article>
+          <article class="tool-card">
+            <code>mnemos_hypomnema_promote</code>
+            <h3>Graduate into Mnemos</h3>
+            <p>Dry-runs by default, then writes a de-identified semantic engram when promotion is explicit.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell">
+        <div class="section-head">
+          <div class="kicker">Data shape</div>
+          <p class="section-copy">The schema is deliberately boring. That is the point. Hypomnema should be inspectable, easy to query, and clear enough that a future agent can tell whether it is reading active continuity, stale continuity, or promoted continuity.</p>
+        </div>
+        <div class="schema-strip">
+          <article class="schema-card">
+            <div class="metric-label">Scope</div>
+            <p>agent_id, person_id, project_scope</p>
+          </article>
+          <article class="schema-card">
+            <div class="metric-label">Content</div>
+            <p>content, source, domain, tags</p>
+          </article>
+          <article class="schema-card">
+            <div class="metric-label">Weight</div>
+            <p>confidence, salience, density, foundational</p>
+          </article>
+          <article class="schema-card">
+            <div class="metric-label">Lifecycle</div>
+            <p>active, superseded_by, graduated_to_engram_id</p>
+          </article>
+          <article class="schema-card">
+            <div class="metric-label">History</div>
+            <p>revision_count, revisions, last_revised_at</p>
+          </article>
+          <article class="schema-card">
+            <div class="metric-label">Provenance</div>
+            <p>related_session_id, related_engram_id</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell closing">
+        <blockquote>Hypomnema lets Mnemos stay alive without forcing every continuity note to become a belief.</blockquote>
+        <div class="summary">
+          In practice, the prompt packet can read: identity first, pending revisions next, hypomnema as "what I am sitting with," functional memory as "what I reliably remember right now," and Mnemos as "associations moving underneath." That ordering keeps scoped continuity near the surface while leaving the deeper graph free to remain slower, more durable, and more consequential.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">Mnemos / hypomnema explainer / standalone artifact</div>
+  </footer>
+
+  <script>
+    const stages = {
+      capture: {
+        title: "Capture",
+        copy: "A session produces something worth carrying forward, but not necessarily something ready to become a Mnemos engram.",
+        code: `mnemos_hypomnema_write(
+  content="This project keeps functional memory, hypomnema, and Mnemos distinct.",
+  source="observed",
+  domain="foundational"
+)`,
+        nodes: ["capture"],
+        wires: ["w-session-hypo"]
+      },
+      scope: {
+        title: "Scope",
+        copy: "The entry is bound to an agent, a person, and a project. That prevents private relationship context from becoming generic memory by accident.",
+        code: `agent_id="vektor"
+person_id="riley"
+project_scope="codex-test"`,
+        nodes: ["scope", "retrieve"],
+        wires: ["w-scope-hypo"]
+      },
+      revise: {
+        title: "Revise",
+        copy: "If the understanding changes, the entry is revised with an audit trail. If it becomes stale, it can be superseded and removed from active recall.",
+        code: `mnemos_hypomnema_revise(
+  entry_id="...",
+  content="sharper continuity",
+  reason="better evidence"
+)`,
+        nodes: ["revise", "retrieve"],
+        wires: ["w-hypo-audit"]
+      },
+      retrieve: {
+        title: "Retrieve",
+        copy: "At prompt time, hypomnema returns the strongest scoped entries by relevance, confidence, salience, and foundational weight.",
+        code: `mnemos_hypomnema_search(
+  query="memory layers",
+  agent_id="vektor",
+  person_id="riley"
+)`,
+        nodes: ["retrieve", "scope"],
+        wires: ["w-scope-hypo", "w-session-hypo"]
+      },
+      promote: {
+        title: "Promote",
+        copy: "Only stable entries graduate upward. Promotion is explicit, dry-run by default, and writes a de-identified semantic engram into Mnemos.",
+        code: `mnemos_hypomnema_promote(
+  entry_id="...",
+  dry_run=false
+)`,
+        nodes: ["promote", "retrieve"],
+        wires: ["w-hypo-mnemos", "w-mnemos-hypo"]
+      }
+    };
+
+    const title = document.getElementById("stage-title");
+    const copy = document.getElementById("stage-copy");
+    const code = document.getElementById("stage-code");
+    const buttons = Array.from(document.querySelectorAll("[data-stage]"));
+    const nodes = Array.from(document.querySelectorAll("[data-node]"));
+    const wires = Array.from(document.querySelectorAll(".wire"));
+
+    function setStage(name) {
+      const stage = stages[name];
+      title.textContent = stage.title;
+      copy.textContent = stage.copy;
+      code.textContent = stage.code;
+      buttons.forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.stage === name));
+      });
+      nodes.forEach((node) => {
+        node.classList.toggle("active", stage.nodes.includes(node.dataset.node));
+      });
+      wires.forEach((wire) => {
+        wire.classList.toggle("hot", stage.wires.some((className) => wire.classList.contains(className)));
+      });
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => setStage(button.dataset.stage));
+    });
+  </script>
+</body>
+</html>

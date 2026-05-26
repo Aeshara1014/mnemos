@@ -8,6 +8,12 @@ Tools:
     mnemos_remember     — Encode a new memory
     mnemos_ingest       — Ingest content from external sources
     mnemos_recall       — Retrieve relevant memories
+    mnemos_hypomnema_write   — Write scoped continuity before promotion
+    mnemos_hypomnema_search  — Search scoped continuity
+    mnemos_hypomnema_revise  — Revise scoped continuity
+    mnemos_hypomnema_supersede — Replace stale scoped continuity
+    mnemos_hypomnema_candidates — List promotion-ready continuity
+    mnemos_hypomnema_promote — Promote stable continuity into Mnemos
     mnemos_inspect      — View full details of a memory
     mnemos_status       — Get memory system status
     mnemos_beliefs      — List current beliefs
@@ -158,6 +164,18 @@ def _ensure_store() -> EngramStore:
     if _store is None:
         _init_store()
     return _store  # type: ignore
+
+
+def _format_hypomnema_entry(entry: dict) -> str:
+    tags = ", ".join(entry.get("tags", [])) or "(none)"
+    promoted = entry.get("graduated_to_engram_id") or "not promoted"
+    return (
+        f"- {entry['content']}\n"
+        f"  id={entry['id']} domain={entry['domain']} source={entry['source']} "
+        f"confidence={entry['confidence']:.2f} salience={entry['salience']:.2f} "
+        f"scope={entry['agent_id']}/{entry['person_id']}/{entry['project_scope']}\n"
+        f"  tags={tags} revisions={entry['revision_count']} promoted={promoted}"
+    )
 
 
 @mcp.tool()
@@ -583,6 +601,267 @@ def mnemos_recall(
 
 
 @mcp.tool()
+def mnemos_hypomnema_write(
+    content: str,
+    source: str = "observed",
+    domain: str = "topical",
+    tags: str = "",
+    agent_id: str = "default",
+    person_id: str = "user",
+    project_scope: str = "global",
+    density: float = 0.5,
+    confidence: float = 0.6,
+    salience: float = 0.5,
+    foundational: bool = False,
+    related_session_id: str = "",
+    related_engram_id: str = "",
+) -> str:
+    """Write a scoped hypomnema entry.
+
+    Hypomnema is the durable continuity layer between functional session
+    memory and Mnemos engrams. Use it for what an agent is "sitting with":
+    stable-enough context that should survive sessions, stay scoped to a
+    person/project relationship, and remain revisable before promotion.
+
+    Args:
+        content: Continuity note to preserve.
+        source: "observed", "synthesized", or "co-formed".
+        domain: "foundational", "identity", "recurring", "long-arc",
+            "topical", or "situational".
+        tags: Comma-separated tags.
+        agent_id: Agent this continuity belongs to.
+        person_id: Person/relationship scope.
+        project_scope: Project or workspace scope.
+        density: How compressed the entry is (0.0 sparse, 1.0 dense).
+        confidence: How reliable the entry is.
+        salience: How important it is for future continuity.
+        foundational: Whether this should anchor the relationship/model.
+        related_session_id: Optional external session identifier.
+        related_engram_id: Optional Mnemos engram this entry interprets.
+    """
+    gate = _setup_gate()
+    if gate:
+        return gate
+    _ensure_store()
+    try:
+        entry_id = _store.write_hypomnema_entry(  # type: ignore
+            content,
+            source=source,
+            domain=domain,
+            tags=tags,
+            agent_id=agent_id,
+            person_id=person_id,
+            project_scope=project_scope,
+            density=density,
+            confidence=confidence,
+            salience=salience,
+            foundational=foundational,
+            related_session_id=related_session_id or None,
+            related_engram_id=related_engram_id or None,
+        )
+    except ValueError as exc:
+        return f"Hypomnema write failed: {exc}"
+
+    return (
+        f"Hypomnema written: {entry_id}\n"
+        f"  Scope: {agent_id}/{person_id}/{project_scope}\n"
+        f"  Domain: {domain}\n"
+        f"  Source: {source}\n"
+        f"  Confidence: {confidence:.2f}\n"
+        f"  Salience: {salience:.2f}"
+    )
+
+
+@mcp.tool()
+def mnemos_hypomnema_search(
+    query: str = "",
+    max_results: int = 8,
+    agent_id: str = "default",
+    person_id: str = "user",
+    project_scope: str = "global",
+    include_inactive: bool = False,
+) -> str:
+    """Search scoped hypomnema continuity entries.
+
+    Args:
+        query: Optional natural-language query. Empty returns strongest entries.
+        max_results: Maximum entries to return.
+        agent_id: Agent this continuity belongs to.
+        person_id: Person/relationship scope.
+        project_scope: Project or workspace scope.
+        include_inactive: Include superseded entries if true.
+    """
+    gate = _setup_gate()
+    if gate:
+        return gate
+    _ensure_store()
+    entries = _store.search_hypomnema(  # type: ignore
+        query,
+        agent_id=agent_id,
+        person_id=person_id,
+        project_scope=project_scope,
+        limit=max_results,
+        include_inactive=include_inactive,
+    )
+    if not entries:
+        return "No hypomnema entries found."
+
+    lines = []
+    for entry in entries:
+        lines.append(f"[{entry['score']:.2f}] " + _format_hypomnema_entry(entry))
+    return f"Found {len(entries)} hypomnema entries:\n\n" + "\n\n".join(lines)
+
+
+@mcp.tool()
+def mnemos_hypomnema_revise(
+    entry_id: str,
+    content: str,
+    reason: str,
+    agent_id: str = "default",
+    person_id: str = "user",
+    project_scope: str = "global",
+    confidence: float = -1.0,
+    salience: float = -1.0,
+) -> str:
+    """Revise a hypomnema entry while preserving its prior version.
+
+    Use this when scoped continuity is still true but needs sharper wording,
+    corrected evidence, or a better compression.
+    """
+    gate = _setup_gate()
+    if gate:
+        return gate
+    _ensure_store()
+    try:
+        _store.revise_hypomnema_entry(  # type: ignore
+            entry_id,
+            content,
+            reason=reason,
+            agent_id=agent_id,
+            person_id=person_id,
+            project_scope=project_scope,
+            confidence=confidence if confidence >= 0 else None,
+            salience=salience if salience >= 0 else None,
+        )
+    except (KeyError, ValueError) as exc:
+        return f"Hypomnema revision failed: {exc}"
+
+    return f"Hypomnema revised: {entry_id}\n  Reason: {reason}"
+
+
+@mcp.tool()
+def mnemos_hypomnema_supersede(
+    entry_id: str,
+    content: str,
+    reason: str,
+    agent_id: str = "default",
+    person_id: str = "user",
+    project_scope: str = "global",
+) -> str:
+    """Supersede a hypomnema entry with a replacement entry.
+
+    Use this when an old continuity note should stop participating in active
+    retrieval but its audit trail should remain visible.
+    """
+    gate = _setup_gate()
+    if gate:
+        return gate
+    _ensure_store()
+    try:
+        new_id = _store.supersede_hypomnema_entry(  # type: ignore
+            entry_id,
+            content,
+            reason=reason,
+            agent_id=agent_id,
+            person_id=person_id,
+            project_scope=project_scope,
+        )
+    except (KeyError, ValueError) as exc:
+        return f"Hypomnema supersession failed: {exc}"
+
+    return f"Hypomnema superseded: {entry_id}\n  Replacement: {new_id}\n  Reason: {reason}"
+
+
+@mcp.tool()
+def mnemos_hypomnema_promote(
+    entry_id: str,
+    dry_run: bool = True,
+    agent_id: str = "default",
+    person_id: str = "user",
+    project_scope: str = "global",
+) -> str:
+    """Promote stable hypomnema into a Mnemos engram.
+
+    Promotion is explicit and dry-run by default because hypomnema is scoped
+    continuity. The promoted engram is lightly de-identified and tagged as
+    hypomnema/promoted/continuity.
+    """
+    gate = _setup_gate()
+    if gate:
+        return gate
+    _ensure_store()
+    entry = _store.get_hypomnema_entry(  # type: ignore
+        entry_id,
+        agent_id=agent_id,
+        person_id=person_id,
+        project_scope=project_scope,
+        active_only=True,
+    )
+    if entry is None:
+        return f"Active hypomnema entry not found: {entry_id}"
+
+    deidentified = entry["content"].replace(person_id, "the collaborator")
+    content = "[promoted from hypomnema; de-identified] " + deidentified
+    if dry_run:
+        return (
+            f"Hypomnema promotion dry run: {entry_id}\n"
+            f"  Would encode as Mnemos engram:\n  {content}"
+        )
+
+    engram = _encoder.encode(  # type: ignore
+        content=content,
+        impact="Stable scoped continuity promoted from hypomnema.",
+        kind="semantic",
+        tags=["hypomnema", "promoted", "continuity", project_scope],
+        source=SourceType.USER_EXPLICIT,
+        agent_id=agent_id,
+        skip_surprise_detection=True,
+    )
+    _store.mark_hypomnema_promoted(entry_id, engram.id)  # type: ignore
+    return (
+        f"Hypomnema promoted: {entry_id}\n"
+        f"  Engram: {engram.id}\n"
+        f"  Connections: {len(engram.connections)} discovered"
+    )
+
+
+@mcp.tool()
+def mnemos_hypomnema_candidates(
+    max_results: int = 10,
+    agent_id: str = "default",
+    person_id: str = "user",
+    project_scope: str = "global",
+) -> str:
+    """List hypomnema entries that meet promotion thresholds."""
+    gate = _setup_gate()
+    if gate:
+        return gate
+    _ensure_store()
+    entries = _store.get_hypomnema_promotion_candidates(  # type: ignore
+        agent_id=agent_id,
+        person_id=person_id,
+        project_scope=project_scope,
+        limit=max_results,
+    )
+    if not entries:
+        return "No hypomnema entries currently meet promotion thresholds."
+    return (
+        f"{len(entries)} promotion candidates:\n\n"
+        + "\n\n".join(_format_hypomnema_entry(entry) for entry in entries)
+    )
+
+
+@mcp.tool()
 def mnemos_inspect(engram_id: str) -> str:
     """View full details of a specific memory.
 
@@ -657,6 +936,10 @@ def mnemos_status(agent_id: str = "default") -> str:
         f"  Archived: {stats.get('archived', 0)}",
         f"  Connections: {stats.get('connections', 0)}",
         f"  Active beliefs: {stats.get('beliefs_active', 0)}",
+        f"  Hypomnema active: {stats.get('hypomnema_active', 0)}",
+        f"    Foundational: {stats.get('hypomnema_foundational', 0)}",
+        f"    Promotion candidates: {stats.get('hypomnema_promotion_candidates', 0)}",
+        f"    Promoted: {stats.get('hypomnema_promoted', 0)}",
         f"  Reconsolidations: {stats.get('reconsolidation_events', 0)}",
     ]
     if "accessibility_avg" in stats:

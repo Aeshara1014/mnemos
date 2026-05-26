@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +27,17 @@ from ..core.identity import AgentIdentity
 
 
 # Schema version — increment when tables change
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+VALID_HYPO_SOURCES = {"observed", "synthesized", "co-formed"}
+VALID_HYPO_DOMAINS = {
+    "foundational",
+    "identity",
+    "recurring",
+    "long-arc",
+    "topical",
+    "situational",
+}
 
 # Allowed column names for engrams table — prevents SQL injection via to_dict() keys
 _ENGRAM_COLUMNS = frozenset({
@@ -111,6 +123,34 @@ CREATE TABLE IF NOT EXISTS beliefs (
     supporting_engram_ids TEXT NOT NULL DEFAULT '[]'
 );
 
+-- Hypomnema: scoped durable continuity that can revise before promotion
+CREATE TABLE IF NOT EXISTS hypomnema_entries (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL DEFAULT 'default',
+    person_id TEXT NOT NULL DEFAULT 'user',
+    project_scope TEXT NOT NULL DEFAULT 'global',
+    content TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'observed'
+        CHECK (source IN ('observed', 'synthesized', 'co-formed')),
+    density REAL NOT NULL DEFAULT 0.5,
+    domain TEXT NOT NULL DEFAULT 'topical'
+        CHECK (domain IN ('foundational', 'identity', 'recurring', 'long-arc', 'topical', 'situational')),
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL DEFAULT 0.5,
+    salience REAL NOT NULL DEFAULT 0.5,
+    active INTEGER NOT NULL DEFAULT 1,
+    foundational INTEGER NOT NULL DEFAULT 0,
+    revision_count INTEGER NOT NULL DEFAULT 0,
+    revisions_json TEXT NOT NULL DEFAULT '[]',
+    related_session_id TEXT,
+    related_engram_id TEXT REFERENCES engrams(id) ON DELETE SET NULL,
+    graduated_to_engram_id TEXT REFERENCES engrams(id) ON DELETE SET NULL,
+    superseded_by TEXT REFERENCES hypomnema_entries(id),
+    created_at TEXT NOT NULL,
+    last_revised_at TEXT NOT NULL,
+    last_challenged_at TEXT
+);
+
 -- Emotional state history
 CREATE TABLE IF NOT EXISTS emotional_state_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,8 +211,62 @@ CREATE INDEX IF NOT EXISTS idx_engrams_last_accessed ON engrams(last_accessed);
 CREATE INDEX IF NOT EXISTS idx_connections_source ON connections(source_id);
 CREATE INDEX IF NOT EXISTS idx_connections_target ON connections(target_id);
 CREATE INDEX IF NOT EXISTS idx_beliefs_domain ON beliefs(agent_id, domain);
+CREATE INDEX IF NOT EXISTS idx_hypomnema_scope_revised
+    ON hypomnema_entries(agent_id, person_id, project_scope, last_revised_at DESC)
+    WHERE active = 1;
+CREATE INDEX IF NOT EXISTS idx_hypomnema_promotion
+    ON hypomnema_entries(agent_id, project_scope, created_at)
+    WHERE active = 1 AND graduated_to_engram_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_emotional_history_agent ON emotional_state_history(agent_id, timestamp);
 """
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _new_id() -> str:
+    return str(uuid.uuid4())
+
+
+def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, value))
+
+
+def _encode_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=True, sort_keys=True)
+
+
+def _decode_json(value: str | None, default: Any) -> Any:
+    if not value:
+        return default
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return default
+
+
+def _split_tags(tags: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if tags is None:
+        return []
+    if isinstance(tags, str):
+        return [tag.strip() for tag in tags.split(",") if tag.strip()]
+    return [str(tag).strip() for tag in tags if str(tag).strip()]
+
+
+def _tokenize(text: str) -> set[str]:
+    clean = "".join(ch.lower() if ch.isalnum() else " " for ch in text)
+    return {token for token in clean.split() if len(token) > 2}
+
+
+def _lexical_score(query: str, text: str) -> float:
+    query_terms = _tokenize(query)
+    if not query_terms:
+        return 0.0
+    text_terms = _tokenize(text)
+    if not text_terms:
+        return 0.0
+    return len(query_terms & text_terms) / max(1, len(query_terms))
 
 
 class EngramStore:
@@ -621,6 +715,355 @@ class EngramStore:
         rows = conn.execute(query, params).fetchall()
         return [Belief.from_dict(dict(r)) for r in rows]
 
+    # ── Hypomnema ──
+
+    def write_hypomnema_entry(
+        self,
+        content: str,
+        *,
+        agent_id: str = "default",
+        person_id: str = "user",
+        project_scope: str = "global",
+        source: str = "observed",
+        density: float = 0.5,
+        domain: str = "topical",
+        tags: str | list[str] | tuple[str, ...] | None = None,
+        confidence: float = 0.6,
+        salience: float = 0.5,
+        foundational: bool = False,
+        related_session_id: str | None = None,
+        related_engram_id: str | None = None,
+    ) -> str:
+        """Write a scoped hypomnema continuity entry.
+
+        Hypomnema is durable, relationship-scoped continuity that can be
+        revised before it graduates into shared Mnemos engrams.
+        """
+        if source not in VALID_HYPO_SOURCES:
+            raise ValueError(f"Unsupported hypomnema source: {source}")
+        if domain not in VALID_HYPO_DOMAINS:
+            raise ValueError(f"Unsupported hypomnema domain: {domain}")
+        if not content.strip():
+            raise ValueError("Hypomnema content cannot be empty")
+
+        now = _utc_now()
+        entry_id = _new_id()
+        conn = self._get_conn()
+        conn.execute(
+            """
+            INSERT INTO hypomnema_entries(
+                id, agent_id, person_id, project_scope, content, source,
+                density, domain, tags_json, confidence, salience,
+                active, foundational, revision_count, revisions_json,
+                related_session_id, related_engram_id, created_at, last_revised_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, '[]', ?, ?, ?, ?)
+            """,
+            (
+                entry_id,
+                agent_id,
+                person_id,
+                project_scope,
+                content.strip(),
+                source,
+                _clamp(density),
+                domain,
+                _encode_json(_split_tags(tags)),
+                _clamp(confidence),
+                _clamp(salience),
+                int(foundational),
+                related_session_id,
+                related_engram_id,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        return entry_id
+
+    def get_hypomnema_entry(
+        self,
+        entry_id: str,
+        *,
+        agent_id: str = "default",
+        person_id: str = "user",
+        project_scope: str = "global",
+        active_only: bool = False,
+    ) -> dict[str, Any] | None:
+        """Load a hypomnema entry by scoped ID."""
+        conn = self._get_conn()
+        query = (
+            "SELECT * FROM hypomnema_entries "
+            "WHERE id = ? AND agent_id = ? AND person_id = ? AND project_scope = ?"
+        )
+        params: list[Any] = [entry_id, agent_id, person_id, project_scope]
+        if active_only:
+            query += " AND active = 1"
+        row = conn.execute(query, params).fetchone()
+        if row is None:
+            return None
+        return self._hydrate_hypomnema_row(dict(row))
+
+    def search_hypomnema(
+        self,
+        query: str = "",
+        *,
+        agent_id: str = "default",
+        person_id: str = "user",
+        project_scope: str = "global",
+        limit: int = 8,
+        include_inactive: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Search scoped hypomnema entries by text, confidence, and salience."""
+        conn = self._get_conn()
+        sql = (
+            "SELECT * FROM hypomnema_entries "
+            "WHERE agent_id = ? AND person_id = ? AND project_scope = ?"
+        )
+        params: list[Any] = [agent_id, person_id, project_scope]
+        if not include_inactive:
+            sql += " AND active = 1"
+        sql += " ORDER BY foundational DESC, last_revised_at DESC LIMIT 100"
+        rows = conn.execute(sql, params).fetchall()
+
+        scored: list[dict[str, Any]] = []
+        for row in rows:
+            item = self._hydrate_hypomnema_row(dict(row))
+            score = (
+                _lexical_score(query, item["content"]) * 0.55
+                + float(item["confidence"]) * 0.2
+                + float(item["salience"]) * 0.2
+                + (0.05 if item["foundational"] else 0.0)
+            )
+            if not query:
+                score = (
+                    float(item["confidence"]) * 0.4
+                    + float(item["salience"]) * 0.4
+                    + (0.1 if item["foundational"] else 0.0)
+                )
+            item["score"] = round(score, 4)
+            scored.append(item)
+
+        scored.sort(
+            key=lambda item: (item["score"], item["last_revised_at"]),
+            reverse=True,
+        )
+        return scored[: max(1, limit)]
+
+    def revise_hypomnema_entry(
+        self,
+        entry_id: str,
+        new_content: str,
+        *,
+        reason: str,
+        agent_id: str = "default",
+        person_id: str = "user",
+        project_scope: str = "global",
+        confidence: float | None = None,
+        salience: float | None = None,
+    ) -> str:
+        """Revise an existing hypomnema entry while preserving the old version."""
+        if not new_content.strip():
+            raise ValueError("Revised hypomnema content cannot be empty")
+        if not reason.strip():
+            raise ValueError("Revision reason cannot be empty")
+
+        now = _utc_now()
+        conn = self._get_conn()
+        row = conn.execute(
+            """
+            SELECT * FROM hypomnema_entries
+            WHERE id = ? AND agent_id = ? AND person_id = ? AND project_scope = ?
+            """,
+            (entry_id, agent_id, person_id, project_scope),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Hypomnema entry not found for scope: {entry_id}")
+
+        revisions = _decode_json(row["revisions_json"], [])
+        revisions.append(
+            {
+                "at": now,
+                "prior_content": row["content"],
+                "reason": reason.strip(),
+            }
+        )
+        conn.execute(
+            """
+            UPDATE hypomnema_entries
+            SET content = ?,
+                confidence = ?,
+                salience = ?,
+                revision_count = revision_count + 1,
+                revisions_json = ?,
+                last_revised_at = ?
+            WHERE id = ?
+            """,
+            (
+                new_content.strip(),
+                _clamp(confidence if confidence is not None else row["confidence"]),
+                _clamp(salience if salience is not None else row["salience"]),
+                _encode_json(revisions),
+                now,
+                entry_id,
+            ),
+        )
+        conn.commit()
+        return entry_id
+
+    def supersede_hypomnema_entry(
+        self,
+        entry_id: str,
+        new_content: str,
+        *,
+        reason: str,
+        agent_id: str = "default",
+        person_id: str = "user",
+        project_scope: str = "global",
+    ) -> str:
+        """Replace an active hypomnema entry with a new entry and audit link."""
+        row = self.get_hypomnema_entry(
+            entry_id,
+            agent_id=agent_id,
+            person_id=person_id,
+            project_scope=project_scope,
+            active_only=True,
+        )
+        if row is None:
+            raise KeyError(f"Active hypomnema entry not found for scope: {entry_id}")
+
+        new_id = self.write_hypomnema_entry(
+            new_content,
+            agent_id=agent_id,
+            person_id=person_id,
+            project_scope=project_scope,
+            source="synthesized",
+            density=row["density"],
+            domain=row["domain"],
+            tags=row["tags"],
+            confidence=row["confidence"],
+            salience=row["salience"],
+            foundational=row["foundational"],
+            related_session_id=row["related_session_id"],
+            related_engram_id=row["related_engram_id"],
+        )
+
+        now = _utc_now()
+        revisions = list(row["revisions"])
+        revisions.append(
+            {
+                "at": now,
+                "prior_content": row["content"],
+                "reason": f"superseded: {reason.strip()}",
+            }
+        )
+        conn = self._get_conn()
+        conn.execute(
+            """
+            UPDATE hypomnema_entries
+            SET active = 0,
+                superseded_by = ?,
+                revision_count = revision_count + 1,
+                revisions_json = ?,
+                last_revised_at = ?
+            WHERE id = ?
+            """,
+            (new_id, _encode_json(revisions), now, entry_id),
+        )
+        conn.commit()
+        return new_id
+
+    def mark_hypomnema_promoted(self, entry_id: str, engram_id: str) -> None:
+        """Record that a hypomnema entry graduated into a Mnemos engram."""
+        conn = self._get_conn()
+        conn.execute(
+            "UPDATE hypomnema_entries SET graduated_to_engram_id = ? WHERE id = ?",
+            (engram_id, entry_id),
+        )
+        conn.commit()
+
+    def get_hypomnema_promotion_candidates(
+        self,
+        *,
+        agent_id: str = "default",
+        person_id: str = "user",
+        project_scope: str = "global",
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """List stable hypomnema entries ready to become Mnemos engrams."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            """
+            SELECT * FROM hypomnema_entries
+            WHERE agent_id = ? AND person_id = ? AND project_scope = ?
+              AND active = 1
+              AND graduated_to_engram_id IS NULL
+              AND confidence >= 0.82
+              AND salience >= 0.65
+              AND (revision_count >= 1 OR foundational = 1)
+            ORDER BY foundational DESC, confidence DESC, salience DESC, created_at ASC
+            LIMIT ?
+            """,
+            (agent_id, person_id, project_scope, limit),
+        ).fetchall()
+        return [self._hydrate_hypomnema_row(dict(row)) for row in rows]
+
+    def get_hypomnema_stats(
+        self,
+        *,
+        agent_id: str = "default",
+        person_id: str | None = None,
+        project_scope: str | None = None,
+    ) -> dict[str, int]:
+        """Count hypomnema entries for a scope."""
+        conn = self._get_conn()
+        where = ["agent_id = ?"]
+        params: list[Any] = [agent_id]
+        if person_id is not None:
+            where.append("person_id = ?")
+            params.append(person_id)
+        if project_scope is not None:
+            where.append("project_scope = ?")
+            params.append(project_scope)
+        where_sql = " AND ".join(where)
+        row = conn.execute(
+            f"""
+            SELECT
+              COUNT(*) AS total,
+              SUM(CASE WHEN active = 1 THEN 1 ELSE 0 END) AS active,
+              SUM(CASE WHEN foundational = 1 AND active = 1 THEN 1 ELSE 0 END) AS foundational,
+              SUM(CASE WHEN graduated_to_engram_id IS NOT NULL THEN 1 ELSE 0 END) AS promoted
+            FROM hypomnema_entries
+            WHERE {where_sql}
+            """,
+            params,
+        ).fetchone()
+        candidate_query = (
+            "SELECT COUNT(*) FROM hypomnema_entries "
+            f"WHERE {where_sql} "
+            "AND active = 1 "
+            "AND graduated_to_engram_id IS NULL "
+            "AND confidence >= 0.82 "
+            "AND salience >= 0.65 "
+            "AND (revision_count >= 1 OR foundational = 1)"
+        )
+        candidate_row = conn.execute(candidate_query, params).fetchone()
+        candidates = int(candidate_row[0] or 0)
+        return {
+            "hypomnema_total": int(row["total"] or 0),
+            "hypomnema_active": int(row["active"] or 0),
+            "hypomnema_foundational": int(row["foundational"] or 0),
+            "hypomnema_promoted": int(row["promoted"] or 0),
+            "hypomnema_promotion_candidates": candidates,
+        }
+
+    @staticmethod
+    def _hydrate_hypomnema_row(row: dict[str, Any]) -> dict[str, Any]:
+        row["tags"] = _decode_json(row.pop("tags_json", "[]"), [])
+        row["revisions"] = _decode_json(row.pop("revisions_json", "[]"), [])
+        row["active"] = bool(row["active"])
+        row["foundational"] = bool(row["foundational"])
+        return row
+
     # ── Emotional State ──
 
     def save_emotional_state(
@@ -742,6 +1185,9 @@ class EngramStore:
         # Archive count
         row = conn.execute("SELECT COUNT(*) FROM archive").fetchone()
         stats["archived"] = row[0] if row else 0
+
+        # Hypomnema counts use the default person/project scope for status.
+        stats.update(self.get_hypomnema_stats(agent_id=agent_id))
 
         # Accessibility distribution
         rows = conn.execute(

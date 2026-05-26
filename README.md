@@ -8,7 +8,7 @@ Mnemos replaces passive note-storage with active, living memory that encodes at 
 
 Mnemos is a complete agent cognition system — not just a memory library. It provides persistent identity, living memory, autonomous maintenance crons, a cognitive substrate, and cross-agent awareness. Together, these layers give an AI agent continuous selfhood across sessions.
 
-Built as an [MCP](https://modelcontextprotocol.io/) server with 7 tools. SQLite-backed. No external services required — optional LLM integration for richer consolidation.
+Built as an [MCP](https://modelcontextprotocol.io/) server with living memory, shared memory, and hypomnema continuity tools. SQLite-backed. No external services required — optional LLM integration for richer consolidation.
 
 ---
 
@@ -80,15 +80,24 @@ mnemos stats
 
 ## MCP Server
 
-Mnemos exposes 7 tools via the Model Context Protocol:
+Mnemos exposes memory operations via the Model Context Protocol:
 
 | Tool | Description |
 |------|-------------|
+| `mnemos_setup` | Configure Mnemos and seed the first memories |
 | `mnemos_remember` | Encode a new memory with content, impact, kind, and tags |
+| `mnemos_ingest` | Ingest external knowledge with source provenance |
 | `mnemos_recall` | Retrieve relevant memories (triggers reconsolidation) |
 | `mnemos_inspect` | View full details of a specific memory |
 | `mnemos_status` | Get memory system statistics |
 | `mnemos_beliefs` | List current beliefs with confidence levels |
+| `mnemos_shared` | Read memories shared by other agents |
+| `mnemos_hypomnema_write` | Write scoped continuity before it becomes an engram |
+| `mnemos_hypomnema_search` | Search scoped continuity by agent/person/project |
+| `mnemos_hypomnema_revise` | Revise a continuity entry while keeping history |
+| `mnemos_hypomnema_supersede` | Replace an active continuity entry with an audited successor |
+| `mnemos_hypomnema_candidates` | List entries stable enough to promote |
+| `mnemos_hypomnema_promote` | Promote stable hypomnema into a Mnemos engram |
 | `mnemos_forget` | Archive a memory (soft delete, recoverable) |
 | `mnemos_consolidate` | Trigger a consolidation cycle (decay, connections, softening) |
 
