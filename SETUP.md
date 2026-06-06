@@ -96,6 +96,18 @@ It exposes only:
 The user does not need to set up a database, choose tags, pass agent IDs, learn
 engram/hypomnema terminology, configure OpenClaw, or supply a model key.
 
+Optional visual-capable clients can ask `mnemos_context` for an identity graph:
+
+```json
+{
+  "include_graph": true,
+  "graph_max_nodes": 18
+}
+```
+
+Mnemos still returns the normal continuity packet, plus an SVG image artifact
+and structured graph data when the client can display it.
+
 Optional scope:
 
 ```bash

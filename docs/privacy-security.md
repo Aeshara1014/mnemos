@@ -18,6 +18,8 @@ With no dedicated provider configured, Mnemos:
 Simple mode tools still mutate local state:
 
 - `mnemos_context` can create the database and log maintenance
+- `mnemos_context(include_graph=true)` can return a scoped SVG identity graph
+  artifact and structured graph data
 - `mnemos_capture` writes continuity and durable memories
 - `mnemos_recall` can reconsolidate access metadata
 - `mnemos_correct` can archive, revise, or supersede memory
@@ -63,6 +65,14 @@ agent_id / person_id / project_scope
 This prevents multiple agents on the same machine from accidentally sharing
 continuity through the same database. Shared memory and federation are advanced
 features and should stay opt-in.
+
+## Visual Artifacts
+
+Identity graph artifacts are generated from the same scoped local memory data
+used by `mnemos_context`. They should not include raw database paths, provider
+keys, or unscoped cross-agent memories. Hosts that render images may display
+the SVG inline; hosts that do not can ignore it and continue using the text and
+structured content.
 
 ## Correction and Forgetting
 

@@ -6,6 +6,7 @@ agent-friendly tool set. Advanced/admin tools remain in ``mnemos.mcp_server``.
 
 from __future__ import annotations
 
+import base64
 import logging
 import signal
 import sys
@@ -116,15 +117,46 @@ def register_simple_tools(server: FastMCP, *, include_recall: bool = True) -> No
             idempotent=False,
         )
     )
-    def mnemos_context(query: str = "", max_results: int = 5) -> str:
+    def mnemos_context(
+        query: str = "",
+        max_results: int = 5,
+        include_graph: bool = False,
+        graph_max_nodes: int = 18,
+    ) -> Any:
         """Get the startup continuity packet for this agent/session.
 
         Call at the beginning of a session. It auto-creates local storage on
         first run, runs lightweight maintenance, and returns relevant
-        continuity without requiring setup.
+        continuity without requiring setup. Set include_graph=true to also
+        return a portable SVG identity graph artifact when the client can
+        render images or structured content.
         """
 
-        return _get_runtime().context(query=query, max_results=max_results)
+        runtime = _get_runtime()
+        packet = runtime.context(query=query, max_results=max_results)
+        if not include_graph:
+            return packet
+
+        graph = runtime.identity_graph(max_nodes=graph_max_nodes)
+        svg = graph.pop("svg")
+        graph_text = (
+            f"{packet}\n\n"
+            "Identity graph: included as image/svg+xml plus structured graph data."
+        )
+        return types.CallToolResult(
+            content=[
+                types.TextContent(type="text", text=graph_text),
+                types.ImageContent(
+                    type="image",
+                    mimeType="image/svg+xml",
+                    data=base64.b64encode(svg.encode("utf-8")).decode("ascii"),
+                ),
+            ],
+            structuredContent={
+                "identity_graph": graph,
+                "image_mime_type": "image/svg+xml",
+            },
+        )
 
     @server.tool(
         annotations=_annotations(

@@ -77,7 +77,7 @@ Simple mode exposes only five user-facing tools:
 
 | Tool | Purpose |
 |------|---------|
-| `mnemos_context` | Startup continuity packet. Auto-creates local storage and runs lightweight maintenance. |
+| `mnemos_context` | Startup continuity packet. Auto-creates local storage, runs lightweight maintenance, and can optionally include an identity graph artifact. |
 | `mnemos_capture` | Capture durable preferences, decisions, project state, workflows, and context. |
 | `mnemos_recall` | Search scoped continuity and durable memory with natural language. |
 | `mnemos_correct` | Update, supersede, or archive stale memory. |
@@ -122,12 +122,30 @@ With no provider key and no extra setup, Mnemos can still run:
 - promotion bookkeeping
 - correction, supersession, and archiving
 - startup context packet generation
+- optional SVG identity graph snapshots
 - maintenance during normal tool calls
 
 If a dedicated model provider is configured, `mnemos_maintain(deep=true)` can
 also run richer model-mediated passes such as softening, belief review, and
 reflection. Dedicated providers are optional and never required for baseline
 continuity.
+
+### Optional Identity Graph
+
+For visual-capable MCP clients, `mnemos_context` can include a portable identity
+graph artifact:
+
+```json
+{
+  "include_graph": true,
+  "graph_max_nodes": 18
+}
+```
+
+The default response remains plain text. When graph output is requested, Mnemos
+also returns an `image/svg+xml` artifact and structured graph data containing
+scope, stats, nodes, edges, and growth timeline. Clients that cannot render the
+image can still read the continuity packet and structured data.
 
 Future MCP sampling support can let Mnemos ask the host client's model for
 in-band compression/classification during an active tool call. Background model

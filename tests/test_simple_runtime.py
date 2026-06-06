@@ -211,3 +211,33 @@ def test_recall_filters_unrelated_high_confidence_continuity(tmp_path):
         runtime.close()
 
     assert "No relevant continuity found" in after
+
+
+def test_identity_graph_snapshot_contains_svg_and_structured_data(tmp_path):
+    runtime = MnemosRuntime(
+        db_path=str(tmp_path / "simple.db"),
+        agent_id="nova",
+        person_id="riley",
+        project_scope="demo",
+        use_dedicated_model=False,
+    )
+
+    try:
+        runtime.capture("Nova prefers clear memory visualizations.", importance=0.9)
+        runtime.capture("Decision: the identity graph should be an optional artifact.", importance=0.85)
+        graph = runtime.identity_graph(max_nodes=12)
+    finally:
+        runtime.close()
+
+    assert graph["scope"] == {
+        "agent_id": "nova",
+        "person_id": "riley",
+        "project_scope": "demo",
+    }
+    assert graph["stats"]["active_memories"] >= 2
+    assert any(node["kind"] == "agent" for node in graph["nodes"])
+    assert any(node["kind"] == "continuity" for node in graph["nodes"])
+    assert graph["edges"]
+    assert graph["timeline"]
+    assert graph["svg"].startswith("<svg")
+    assert "Mnemos Identity Graph" in graph["svg"]

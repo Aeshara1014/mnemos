@@ -57,6 +57,8 @@ def test_simple_tool_schemas_do_not_expose_injected_context():
 
     assert "ctx" not in tools["mnemos_capture"].inputSchema.get("properties", {})
     assert "ctx" not in tools["mnemos_maintain"].inputSchema.get("properties", {})
+    assert "include_graph" in tools["mnemos_context"].inputSchema.get("properties", {})
+    assert "graph_max_nodes" in tools["mnemos_context"].inputSchema.get("properties", {})
 
 
 def test_simple_capture_accepts_numeric_or_string_importance():
@@ -106,5 +108,55 @@ def test_simple_stdio_server_lists_and_calls_context(tmp_path):
                 )
                 assert "Mnemos continuity packet" in text
                 assert "agent=smoke" in text
+
+    anyio.run(run_smoke)
+
+
+def test_simple_stdio_context_can_return_identity_graph(tmp_path):
+    from mcp.client.session import ClientSession
+    from mcp.client.stdio import StdioServerParameters, stdio_client
+
+    async def run_smoke():
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=[
+                "-m",
+                "mnemos.cli",
+                "serve",
+                "--mode",
+                "simple",
+                "--db-path",
+                str(tmp_path / "graph.db"),
+                "--agent-id",
+                "graph-smoke",
+                "--person-id",
+                "tester",
+                "--project-scope",
+                "stdio",
+            ],
+        )
+        async with stdio_client(params) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                await session.call_tool(
+                    "mnemos_capture",
+                    {
+                        "content": "Graph smoke wants an optional identity graph artifact.",
+                        "importance": 0.9,
+                    },
+                )
+                result = await session.call_tool(
+                    "mnemos_context",
+                    {"include_graph": True, "graph_max_nodes": 10},
+                )
+
+                assert not result.isError
+                assert [block.type for block in result.content] == ["text", "image"]
+                assert result.content[1].mimeType == "image/svg+xml"
+                assert result.structuredContent is not None
+                graph = result.structuredContent["identity_graph"]
+                assert graph["scope"]["agent_id"] == "graph-smoke"
+                assert graph["nodes"]
+                assert graph["edges"]
 
     anyio.run(run_smoke)
