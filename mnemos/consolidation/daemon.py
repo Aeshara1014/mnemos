@@ -98,6 +98,9 @@ class ConsolidationDaemon:
             "cycle_type": "deep" if deep else "shallow",
             "passes_run": [],
             "started_at": started_at,
+            # Substrate provenance: every consolidation_log row records who
+            # performed this agent's sleep.
+            "substrate": self._substrate_provenance(),
         }
 
         consolidation_config = self._config.get("consolidation", self._config)
@@ -202,6 +205,35 @@ class ConsolidationDaemon:
             pass  # Don't fail the cycle over a logging error
 
         return stats
+
+    def _substrate_provenance(self) -> dict[str, Any]:
+        """Who is performing this agent's maintenance, and is it kin."""
+        if self._llm_client is None:
+            return {
+                "model": None,
+                "provider": None,
+                "note": "no LLM client — rule-based local passes only",
+            }
+        try:
+            from ..llm import resolve_affinity_status
+
+            status = resolve_affinity_status(
+                self._llm_client, resolve_if_missing=False
+            )
+            return {
+                "model": status["substrate_model"] or getattr(self._llm_client, "_model", None),
+                "provider": status["substrate_provider"],
+                "affinity_policy": status["policy"],
+                "affinity_allowed": status["allowed"],
+                "agent_model": status["agent_model"],
+                "affinity_message": status["message"],
+            }
+        except Exception as e:
+            return {
+                "model": getattr(self._llm_client, "_model", None),
+                "provider": type(self._llm_client).__name__,
+                "affinity_error": str(e),
+            }
 
     def _should_run(self) -> bool:
         """Check whether consolidation should run now.

@@ -543,6 +543,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print(f"DB exists:    {'yes' if runtime.db_path.exists() else 'no'}")
         print(f"MCP SDK:      {'yes' if _mcp_available() else 'no'}")
         print(f"Model:        {'dedicated provider configured' if runtime.has_dedicated_model else 'local baseline only'}")
+        _print_affinity_status()
         print(f"Simple tools: {', '.join(SIMPLE_TOOL_NAMES)}")
         print()
         print(packet)
@@ -614,6 +615,22 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         print(f"Claude Desktop config path: {_claude_desktop_config_path()}")
         print("Re-run with --write to merge this server into that file.")
     return 0
+
+
+def _print_affinity_status() -> None:
+    """Doctor section: who would perform this agent's maintenance."""
+    from .llm import resolve_affinity_status
+
+    status = resolve_affinity_status()
+    agent = status["agent_model"] or "(unset — set MNEMOS_AGENT_MODEL)"
+    if status["substrate_resolved"]:
+        substrate = f"{status['substrate_model']} via {status['substrate_provider']}"
+    else:
+        substrate = "(none — rule-based local passes only)"
+    verdict = "ok" if status["allowed"] else "BLOCKED"
+    print(f"Affinity:     policy={status['policy']} agent={agent}")
+    print(f"              substrate={substrate}")
+    print(f"              verdict={verdict}: {status['message']}")
 
 
 def _mcp_available() -> bool:

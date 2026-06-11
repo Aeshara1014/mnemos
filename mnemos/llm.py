@@ -302,7 +302,35 @@ def create_client() -> "LLMClient | None":
     if client is None:
         return None
 
+    status = resolve_affinity_status(client, resolve_if_missing=False)
+    if not status["allowed"]:
+        logger.warning("Substrate affinity: %s", status["message"])
+        return None
+    if "differs" in status["message"] or "unenforced" in status["message"]:
+        logger.info("Substrate affinity: %s", status["message"])
+    return client
+
+
+def resolve_affinity_status(
+    client: "LLMClient | None" = None,
+    *,
+    resolve_if_missing: bool = True,
+) -> dict:
+    """Resolve the affinity configuration and verdict without side effects.
+
+    Used by `mnemos doctor` (resolve the substrate from the environment)
+    and by the consolidation daemon (report on the client it actually
+    holds). With resolve_if_missing=False, a None client means "no
+    substrate" rather than "auto-detect one".
+
+    Returns the AffinityCheck as a dict, plus:
+        substrate_provider — class name of the resolved client, or None
+        substrate_resolved — whether any substrate client exists
+    """
     from .affinity import check_affinity
+
+    if client is None and resolve_if_missing:
+        client = _create_client_unchecked()
 
     agent_model = os.environ.get("MNEMOS_AGENT_MODEL", "").strip() or _load_env_key(
         "MNEMOS_AGENT_MODEL"
@@ -310,15 +338,14 @@ def create_client() -> "LLMClient | None":
     policy = os.environ.get("MNEMOS_SUBSTRATE_AFFINITY", "").strip() or _load_env_key(
         "MNEMOS_SUBSTRATE_AFFINITY"
     )
-    substrate_model = getattr(client, "_model", "") or ""
+    substrate_model = (getattr(client, "_model", "") or "") if client else ""
 
     check = check_affinity(agent_model, substrate_model, policy or "family")
-    if not check.allowed:
-        logger.warning("Substrate affinity: %s", check.message)
-        return None
-    if "differs" in check.message or "unenforced" in check.message:
-        logger.info("Substrate affinity: %s", check.message)
-    return client
+    return {
+        **check.to_dict(),
+        "substrate_provider": type(client).__name__ if client else None,
+        "substrate_resolved": client is not None,
+    }
 
 
 def _create_client_unchecked() -> "LLMClient | None":
@@ -337,6 +364,10 @@ def _create_client_unchecked() -> "LLMClient | None":
         key = _load_env_key("OPENAI_API_KEY")
         if key:
             return OpenAIClient(api_key=key, model=model_override or "gpt-4o-mini")
+        logger.warning(
+            "MNEMOS_LLM_PROVIDER=openai but OPENAI_API_KEY is not set; "
+            "falling back to provider auto-detection."
+        )
     elif forced == "openrouter":
         key = _load_env_key("OPENROUTER_API_KEY")
         if not key:
@@ -346,15 +377,34 @@ def _create_client_unchecked() -> "LLMClient | None":
                 api_key=key,
                 model=model_override or "anthropic/claude-sonnet-4-5",
             )
+        logger.warning(
+            "MNEMOS_LLM_PROVIDER=openrouter but no OpenRouter key was found; "
+            "falling back to provider auto-detection."
+        )
     # forced == "anthropic" or empty string → fall through to auto-detect
 
     anthropic_key = _load_env_key("ANTHROPIC_API_KEY")
     if anthropic_key:
         try:
             import anthropic  # noqa: F401
-            return AnthropicClient(api_key=anthropic_key)
+            return AnthropicClient(
+                api_key=anthropic_key,
+                model=model_override or "claude-sonnet-4-6",
+            )
         except ImportError:
-            pass
+            # An operator who forced anthropic must not silently get a
+            # different provider performing the agent's maintenance.
+            if forced == "anthropic":
+                logger.warning(
+                    "MNEMOS_LLM_PROVIDER=anthropic but the 'anthropic' package "
+                    "is not installed (pip install anthropic); falling back to "
+                    "another provider."
+                )
+            else:
+                logger.info(
+                    "ANTHROPIC_API_KEY is set but the 'anthropic' package is "
+                    "not installed; trying other providers."
+                )
 
     openrouter_key = _load_env_key("OPENROUTER_API_KEY")
     if openrouter_key:
