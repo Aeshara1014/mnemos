@@ -4,6 +4,26 @@ import tempfile
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_mnemos_env(monkeypatch):
+    """No developer's real environment bleeds into tests.
+
+    MNEMOS_DISABLE_DOTENV stops llm._load_env_key (and the OpenClaw key
+    lookup) from reading workspace .env files; the MNEMOS_*/provider
+    variables are cleared so every test starts from a clean slate and
+    sets exactly what it needs via monkeypatch.setenv.
+    """
+    for var in (
+        "MNEMOS_LLM_PROVIDER", "MNEMOS_MODEL", "MNEMOS_AGENT_MODEL",
+        "MNEMOS_SUBSTRATE_AFFINITY", "MNEMOS_AGENT_ID", "MNEMOS_PERSON_ID",
+        "MNEMOS_PROJECT_SCOPE", "MNEMOS_DB_PATH", "MNEMOS_ENV_PATHS",
+        "MNEMOS_WORKSPACE", "MNEMOS_MODE",
+        "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("MNEMOS_DISABLE_DOTENV", "1")
+
+
 @pytest.fixture
 def tmp_db(tmp_path):
     """Create a temporary database path."""

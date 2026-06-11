@@ -225,6 +225,32 @@ class MockClient:
         return "A considered response."
 
 
+def _dotenv_disabled() -> bool:
+    return os.environ.get("MNEMOS_DISABLE_DOTENV", "").strip().lower() in (
+        "1", "true", "yes",
+    )
+
+
+def _env_search_paths() -> list:
+    """Filesystem locations to search for .env files.
+
+    MNEMOS_ENV_PATHS (colon-separated paths) takes precedence. The legacy
+    workspace locations remain as a fallback so existing deployments keep
+    working — but they are personal-machine paths, the same leak class as
+    hardcoded agent names; prefer MNEMOS_ENV_PATHS.
+    """
+    from pathlib import Path
+
+    raw = os.environ.get("MNEMOS_ENV_PATHS", "").strip()
+    if raw:
+        return [Path(p).expanduser() for p in raw.split(":") if p.strip()]
+    return [
+        Path.home() / "clawd" / ".env",
+        Path.home() / "clawd-luca" / ".env",
+        Path.home() / "clawd-anima" / ".env",
+    ]
+
+
 def _load_env_key(key_name: str) -> str:
     """Try to find an API key from env vars, then from .env files."""
     # 1. Environment variable
@@ -232,14 +258,12 @@ def _load_env_key(key_name: str) -> str:
     if val:
         return val
 
-    # 2. Common .env file locations
-    from pathlib import Path
-    env_paths = [
-        Path.home() / "clawd" / ".env",
-        Path.home() / "clawd-luca" / ".env",
-        Path.home() / "clawd-anima" / ".env",
-    ]
-    for env_path in env_paths:
+    # 2. .env files, unless ambient config reads are disabled
+    #    (test isolation, hermetic deployments)
+    if _dotenv_disabled():
+        return ""
+
+    for env_path in _env_search_paths():
         if env_path.exists():
             try:
                 for line in env_path.read_text().splitlines():
@@ -259,6 +283,9 @@ def _load_openclaw_openrouter_key() -> str:
     """Try to find OpenRouter API key from OpenClaw config."""
     from pathlib import Path
     import json
+    if _dotenv_disabled():
+        # Same ambient-machine-state class as .env files.
+        return ""
     openclaw_config = Path.home() / ".openclaw" / "openclaw.json"
     if openclaw_config.exists():
         try:
