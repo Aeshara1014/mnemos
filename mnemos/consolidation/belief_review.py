@@ -16,6 +16,8 @@ as the graph grows.
 
 from __future__ import annotations
 
+from ..core.types import DEFAULT_AGENT_ID
+
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING, Any
@@ -33,7 +35,7 @@ def run_belief_review(
     store: EngramStore,
     config: dict[str, Any] | None = None,
     llm_client: Any | None = None,
-    agent_id: str = "luca",
+    agent_id: str = DEFAULT_AGENT_ID,
 ) -> dict[str, Any]:
     """Review recent memories against active beliefs.
 

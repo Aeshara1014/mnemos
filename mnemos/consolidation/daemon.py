@@ -137,6 +137,7 @@ class ConsolidationDaemon:
                         store=self._store,
                         config=consolidation_config,
                         llm_client=self._llm_client,
+                        agent_id=agent_id,
                     )
                     stats["softening"] = softening_stats
                     stats["passes_run"].append("softening")
@@ -150,6 +151,7 @@ class ConsolidationDaemon:
                         store=self._store,
                         config=consolidation_config,
                         llm_client=self._llm_client,
+                        agent_id=agent_id,
                     )
                     stats["belief_review"] = belief_stats
                     stats["passes_run"].append("belief_review")
@@ -162,6 +164,11 @@ class ConsolidationDaemon:
                     identity = self._store.get_identity(agent_id)
                     if identity is None:
                         identity = AgentIdentity()
+                        # A blank identity defaults its memory profile to
+                        # "default" — reflection derives its memory scope
+                        # from this, so it must carry the real agent_id or
+                        # the pass reflects over the wrong agent's memories.
+                        identity.memory_profile.agent_id = agent_id
 
                     emotional_state = self._store.get_latest_emotional_state(agent_id)
                     if emotional_state is None:

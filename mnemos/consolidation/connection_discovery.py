@@ -15,7 +15,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..core.engram import Connection
-from ..core.types import ConnectionRelation
+from ..core.types import ConnectionRelation, DEFAULT_AGENT_ID
 from ..encoding.llm_classifier import classify_connections
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ def run_connection_discovery(
     embedding_index: Any | None = None,
     config: dict[str, Any] | None = None,
     llm_client: Any | None = None,
-    agent_id: str = "luca",
+    agent_id: str = DEFAULT_AGENT_ID,
 ) -> dict[str, Any]:
     """Find semantically related engrams and create/reclassify connections.
 

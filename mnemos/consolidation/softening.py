@@ -53,11 +53,17 @@ def run_softening_pass(
     store: EngramStore,
     config: dict[str, Any],
     llm_client: Any | None,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     """Rewrite memories that have dropped below the resolution threshold.
 
     Args:
         store: The engram store.
+        agent_id: Agent whose memories to soften. None preserves legacy
+            behavior (the store's own default scope); callers that manage
+            multiple agents in one store MUST pass this explicitly —
+            softening rewrites memory content, and rewriting another
+            agent's memories is identity contamination.
         config: Configuration dict with softening parameters.
         llm_client: LLM client with complete(prompt) -> str method.
             If None, uses rule-based fallback.
@@ -80,7 +86,7 @@ def run_softening_pass(
     }
 
     # Get all engrams that could need softening (active or dormant, resolution > minimum)
-    all_engrams = store.get_active_engrams(limit=5000)
+    all_engrams = store.get_active_engrams(agent_id=agent_id, limit=5000) if agent_id is not None else store.get_active_engrams(limit=5000)
 
     total_res_before = 0.0
     total_res_after = 0.0

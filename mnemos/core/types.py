@@ -140,3 +140,9 @@ def classify_belief_change(
         if previous_confidence < tier <= current_confidence:
             return BeliefChangeKind.CONFIRMED
     return BeliefChangeKind.NO_CROSSING
+
+
+# Canonical default agent scope. Library code must never default to a
+# specific agent's name — scope leaks between agents are identity
+# contamination, not just bugs.
+DEFAULT_AGENT_ID = "default"
