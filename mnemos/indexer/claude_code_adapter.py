@@ -18,7 +18,41 @@ import os
 import sys
 from pathlib import Path
 
+from mnemos.core.types import DEFAULT_AGENT_ID
+
 logger = logging.getLogger("mnemos.indexer.claude_code")
+
+
+def _env_list(name: str) -> list[str]:
+    raw = os.environ.get(name, "").strip()
+    return [p.strip() for p in raw.split(",") if p.strip()] if raw else []
+
+
+def _resolve_agent_id(explicit: str | None) -> str:
+    return (
+        (explicit or "").strip()
+        or os.environ.get("MNEMOS_AGENT_ID", "").strip()
+        or DEFAULT_AGENT_ID
+    )
+
+
+def _discover_openclaw_agents() -> list[str]:
+    """OpenClaw agents that have model configs, discovered from disk.
+
+    MNEMOS_OPENCLAW_AGENTS (comma-separated) overrides discovery.
+    Library code must not hardcode personal agent names.
+    """
+    override = _env_list("MNEMOS_OPENCLAW_AGENTS")
+    if override:
+        return override
+    agents_root = Path.home() / ".openclaw" / "agents"
+    if not agents_root.is_dir():
+        return []
+    return sorted(
+        entry.name
+        for entry in agents_root.iterdir()
+        if (entry / "agent" / "models.json").exists()
+    )
 
 
 def read_claude_code_transcript(path: Path, max_messages: int = 100) -> list[dict]:
@@ -79,7 +113,7 @@ def read_claude_code_transcript(path: Path, max_messages: int = 100) -> list[dic
 def index_session(
     transcript_path: str,
     session_id: str | None = None,
-    agent_id: str = "claude-field",
+    agent_id: str | None = None,
     db_path: str | None = None,
     api_key: str | None = None,
 ) -> dict:
@@ -88,14 +122,21 @@ def index_session(
     Args:
         transcript_path: Path to the .jsonl session file
         session_id: Session identifier (defaults to filename stem)
-        agent_id: Mnemos agent ID
+        agent_id: Mnemos agent ID (default: MNEMOS_AGENT_ID env, then "default")
         db_path: Path to Mnemos database
         api_key: OpenRouter API key (falls back to env/openclaw config)
+
+    Environment:
+        MNEMOS_USER_NAME / MNEMOS_AGENT_NAME — names used in transcript framing
+        MNEMOS_KNOWN_PROJECTS / MNEMOS_ACTIVE_PROJECTS — comma-separated
+        MNEMOS_OPENCLAW_AGENTS — comma-separated, overrides agent discovery
 
     Returns:
         Dict with keys: session_id, memories_encoded, skipped_reason
     """
     from mnemos.indexer.session_indexer import SessionIndexer
+
+    agent_id = _resolve_agent_id(agent_id)
 
     path = Path(transcript_path)
     if not path.exists():
@@ -109,7 +150,7 @@ def index_session(
     key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
     if not key:
         # Look in OpenClaw agent model configs (they store OpenRouter keys)
-        for agent_name in ("anima", "luca", "main"):
+        for agent_name in _discover_openclaw_agents():
             models_path = Path.home() / ".openclaw" / "agents" / agent_name / "agent" / "models.json"
             if models_path.exists():
                 try:
@@ -128,11 +169,11 @@ def index_session(
         agent_id=agent_id,
         db_path=db,
         sessions_dirs=[],  # We don't need discovery — we have the path
-        user_name="Riley",
-        agent_name="Claude",
+        user_name=os.environ.get("MNEMOS_USER_NAME", "").strip() or "User",
+        agent_name=os.environ.get("MNEMOS_AGENT_NAME", "").strip() or agent_id,
         openrouter_api_key=key,
-        known_projects=["claude-field", "polyphonic", "sanctuary", "vektor", "anima", "mnemos"],
-        active_projects=["claude-field"],
+        known_projects=_env_list("MNEMOS_KNOWN_PROJECTS"),
+        active_projects=_env_list("MNEMOS_ACTIVE_PROJECTS"),
     )
 
     # Read transcript using our Claude Code-aware reader
@@ -196,7 +237,11 @@ def main():
     parser = argparse.ArgumentParser(description="Index a Claude Code session into Mnemos")
     parser.add_argument("transcript_path", help="Path to the .jsonl session file")
     parser.add_argument("--session-id", help="Session identifier (defaults to filename)")
-    parser.add_argument("--agent-id", default="claude-field", help="Mnemos agent ID")
+    parser.add_argument(
+        "--agent-id",
+        default=None,
+        help="Mnemos agent ID (default: MNEMOS_AGENT_ID env, then 'default')",
+    )
     parser.add_argument("--db-path", help="Path to Mnemos database")
     parser.add_argument("--api-key", help="OpenRouter API key")
     args = parser.parse_args()
