@@ -31,7 +31,7 @@ class MemoryInspector:
     Usage:
         inspector = MemoryInspector(store=store)
         details = inspector.inspect_engram("engram_abc123")
-        stats = inspector.get_stats("anima")
+        stats = inspector.get_stats("nova")
         graph = inspector.get_connections_graph("engram_abc123", depth=2)
     """
 

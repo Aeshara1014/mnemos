@@ -34,7 +34,7 @@
   "id": "<agent-id>",
   "name": "<display-name>",
   "model": "<provider/model-name>",
-  "workspace": "/Users/rileycoyote/clawd-<name>"
+  "workspace": "~/clawd-<name>"
 }
 ```
 

@@ -70,7 +70,7 @@ class ReactiveRetriever:
 
     Usage:
         retriever = ReactiveRetriever(store)
-        results = retriever.retrieve("What does Riley think about dark mode?")
+        results = retriever.retrieve("What does the user think about dark mode?")
     """
 
     def __init__(

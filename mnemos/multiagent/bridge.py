@@ -6,7 +6,7 @@ directory, and makes cross-agent awareness available to all agents in the system
 Usage:
     bridge = CrossAgentBridge(agents_config=[
         {"name": "vektor", "workspace": "~/vektor"},
-        {"name": "anima", "workspace": "~/anima"},
+        {"name": "nova", "workspace": "~/nova"},
     ])
     result = bridge.sync()
 

@@ -780,7 +780,7 @@
         title: "Scope",
         copy: "The entry is bound to an agent, a person, and a project. That prevents private relationship context from becoming generic memory by accident.",
         code: `agent_id="vektor"
-person_id="riley"
+person_id="alex"
 project_scope="codex-test"`,
         nodes: ["scope", "retrieve"],
         wires: ["w-scope-hypo"]
@@ -802,7 +802,7 @@ project_scope="codex-test"`,
         code: `mnemos_hypomnema_search(
   query="memory layers",
   agent_id="vektor",
-  person_id="riley"
+  person_id="alex"
 )`,
         nodes: ["retrieve", "scope"],
         wires: ["w-scope-hypo", "w-session-hypo"]

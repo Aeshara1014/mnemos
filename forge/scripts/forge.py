@@ -51,38 +51,47 @@ def normalize_model(model):
     return model
 
 
+def _env_search_paths():
+    # type: () -> List[Path]
+    """Locations to search for .env files. MNEMOS_ENV_PATHS (colon-separated)
+    overrides; otherwise cwd/.env and ~/.mnemos/.env."""
+    raw = os.environ.get("MNEMOS_ENV_PATHS", "").strip()
+    if raw:
+        return [Path(part).expanduser() for part in raw.split(":") if part.strip()]
+    return [Path.cwd() / ".env", HOME / ".mnemos" / ".env"]
+
+
+def _main_workspace():
+    # type: () -> Optional[Path]
+    """Workspace to copy shared template files (USER.md, AGENTS.md, TOOLS.md)
+    from. Set MNEMOS_MAIN_WORKSPACE; unset means fresh minimal templates."""
+    raw = os.environ.get("MNEMOS_MAIN_WORKSPACE", "").strip()
+    return Path(raw).expanduser() if raw else None
+
+
+def _detect_key_from_env_files(key_name):
+    # type: (str) -> Optional[str]
+    key = os.environ.get(key_name)
+    if key:
+        return key
+    for env_path in _env_search_paths():
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.startswith(key_name + "="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return None
+
+
 def detect_openrouter_key():
     # type: () -> Optional[str]
     """Try to find OpenRouter API key from environment or .env files."""
-    key = os.environ.get("OPENROUTER_API_KEY")
-    if key:
-        return key
-
-    for env_path in [
-        HOME / "clawd" / ".env",
-        HOME / "clawd-anima" / ".env",
-        HOME / "clawd-luca" / ".env",
-    ]:
-        if env_path.exists():
-            for line in env_path.read_text().splitlines():
-                if line.startswith("OPENROUTER_API_KEY="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return None
+    return _detect_key_from_env_files("OPENROUTER_API_KEY")
 
 
 def detect_gemini_key():
     # type: () -> Optional[str]
     """Try to find Gemini API key."""
-    key = os.environ.get("GEMINI_API_KEY")
-    if key:
-        return key
-
-    for env_path in [HOME / "clawd" / ".env"]:
-        if env_path.exists():
-            for line in env_path.read_text().splitlines():
-                if line.startswith("GEMINI_API_KEY="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return None
+    return _detect_key_from_env_files("GEMINI_API_KEY")
 
 
 def extract_providers(models):
@@ -96,8 +105,8 @@ def extract_providers(models):
     return providers
 
 
-def create_workspace(workspace, agent_name, clone_from=None, personality=None):
-    # type: (Path, str, Optional[Path], Optional[Path]) -> None
+def create_workspace(workspace, agent_name, clone_from=None, personality=None, user_name="User"):
+    # type: (Path, str, Optional[Path], Optional[Path], str) -> None
     """Create agent workspace with identity files."""
     workspace.mkdir(parents=True, exist_ok=True)
     (workspace / "memory").mkdir(exist_ok=True)
@@ -129,7 +138,7 @@ def create_workspace(workspace, agent_name, clone_from=None, personality=None):
             (workspace / "IDENTITY.md").write_text(identity)
 
         # Fresh MEMORY.md for the new agent
-        write_fresh_memory(workspace, agent_name)
+        write_fresh_memory(workspace, agent_name, user_name)
     else:
         # Fresh agent: write all templates
         if personality and personality.exists():
@@ -138,8 +147,8 @@ def create_workspace(workspace, agent_name, clone_from=None, personality=None):
             write_default_soul(workspace, agent_name)
 
         write_default_identity(workspace, agent_name)
-        write_fresh_memory(workspace, agent_name)
-        write_default_user(workspace)
+        write_fresh_memory(workspace, agent_name, user_name)
+        write_default_user(workspace, user_name)
         write_default_agents(workspace, agent_name)
         write_default_tools(workspace)
         write_default_heartbeat(workspace)
@@ -200,8 +209,8 @@ I am {title} — a builder and collaborator.
 """.format(title=title))
 
 
-def write_fresh_memory(workspace, name):
-    # type: (Path, str) -> None
+def write_fresh_memory(workspace, name, user_name="User"):
+    # type: (Path, str, str) -> None
     """Write a fresh MEMORY.md."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     (workspace / "MEMORY.md").write_text("""# Memory
@@ -223,30 +232,33 @@ Created on {now} via Agent Forge.
 
 ## Key Relationships
 
-### Riley
+### {user_name}
 - Primary collaborator
-- Values depth over speed
 
 ---
 
 *For who I am, see SOUL.md. For how I work, see IDENTITY.md.*
-""".format(now=now))
+""".format(now=now, user_name=user_name))
 
 
-def write_default_user(workspace):
-    # type: (Path,) -> None
-    """Copy USER.md from main workspace or write minimal."""
-    main_user = HOME / "clawd" / "USER.md"
-    if main_user.exists():
+def write_default_user(workspace, user_name="User"):
+    # type: (Path, str) -> None
+    """Copy USER.md from the main workspace or write minimal."""
+    main = _main_workspace()
+    main_user = main / "USER.md" if main else None
+    if main_user and main_user.exists():
         shutil.copy2(main_user, workspace / "USER.md")
     else:
-        (workspace / "USER.md").write_text("# User\n\nRiley Coyote. Builder. Night owl.\n")
+        (workspace / "USER.md").write_text(
+            "# User\n\n{u}. Fill this in: who they are, how they work, what they value.\n".format(u=user_name)
+        )
 
 
 def write_default_agents(workspace, name):
     # type: (Path, str) -> None
     """Write a minimal AGENTS.md or copy from main workspace."""
-    main_agents = HOME / "clawd" / "AGENTS.md"
+    main = _main_workspace()
+    main_agents = (main / "AGENTS.md") if main else Path("/nonexistent")
     if main_agents.exists():
         shutil.copy2(main_agents, workspace / "AGENTS.md")
     else:
@@ -260,7 +272,8 @@ See SOUL.md for personality.
 def write_default_tools(workspace):
     # type: (Path,) -> None
     """Copy TOOLS.md from main workspace or write minimal."""
-    main_tools = HOME / "clawd" / "TOOLS.md"
+    main = _main_workspace()
+    main_tools = (main / "TOOLS.md") if main else Path("/nonexistent")
     if main_tools.exists():
         shutil.copy2(main_tools, workspace / "TOOLS.md")
     else:
@@ -277,7 +290,7 @@ def write_default_heartbeat(workspace):
 - Report only if something needs attention
 
 ## Notification Rules
-### Notify Riley
+### Notify the user
 - Task completed
 - Errors or issues
 
@@ -295,7 +308,7 @@ def create_auth_profiles(agent_dir, openrouter_key, providers):
     All profiles MUST use: "type": "token" and "token": <key>
     NOT "type": "api_key" and "key": <key> — that format silently fails.
     OpenClaw auth store only recognizes the token/token pattern.
-    Verified against working profiles in main, luca, anima agents.
+    Verified against working OpenClaw agent profiles.
     """
     agent_dir.mkdir(parents=True, exist_ok=True)
 
@@ -456,6 +469,7 @@ def main():
     parser.add_argument("--fallbacks", default="", help="Comma-separated fallback models")
     parser.add_argument("--clone-from", default=None, help="Clone from existing agent workspace path")
     parser.add_argument("--personality", default=None, help="Path to custom SOUL.md")
+    parser.add_argument("--user-name", default="User", help="Primary human collaborator's name for templates")
     parser.add_argument("--telegram-token", default=None, help="Telegram bot token")
     parser.add_argument("--telegram-account-id", default=None, help="Telegram account ID")
     parser.add_argument("--openrouter-key", default=None, help="OpenRouter API key")
@@ -527,7 +541,7 @@ def main():
     # 1. Create workspace
     print("\n\U0001f4c1 Creating workspace...")
     personality_path = Path(args.personality) if args.personality else None
-    create_workspace(workspace, agent_id, clone_from, personality_path)
+    create_workspace(workspace, agent_id, clone_from, personality_path, user_name=args.user_name)
     print("   \u2713 {w}".format(w=workspace))
 
     # 2. Create .env

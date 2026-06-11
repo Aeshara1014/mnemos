@@ -18,7 +18,7 @@ pip install "mnemos[all]"
 mnemos bootstrap \
   --agent-name Nova \
   --workspace ~/nova \
-  --user-name Riley
+  --user-name Alex
 
 # Follow the printed instructions to install crons
 ```
@@ -124,12 +124,12 @@ If running multiple agents:
 
 ```bash
 # Bootstrap each agent
-mnemos bootstrap --agent-name Nova --workspace ~/nova --user-name Riley
-mnemos bootstrap --agent-name Anima --workspace ~/anima --user-name Riley
+mnemos bootstrap --agent-name Nova --workspace ~/nova --user-name Alex
+mnemos bootstrap --agent-name Scout --workspace ~/scout --user-name Alex
 
 # Register agents with the bridge
 python -m mnemos.multiagent.bridge add-agent nova ~/nova
-python -m mnemos.multiagent.bridge add-agent anima ~/anima
+python -m mnemos.multiagent.bridge add-agent scout ~/scout
 
 # Verify
 python -m mnemos.multiagent.bridge status
@@ -213,7 +213,7 @@ Or manually create `~/.mnemos/agents.json`:
 ```json
 [
   {"name": "nova", "workspace": "~/nova"},
-  {"name": "anima", "workspace": "~/anima"}
+  {"name": "scout", "workspace": "~/scout"}
 ]
 ```
 

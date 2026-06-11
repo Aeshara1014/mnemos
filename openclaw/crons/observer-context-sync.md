@@ -29,7 +29,7 @@ thread seamlessly in a new session.
 
 Steps:
 1. Run: openclaw sessions list --json | head -20
-2. Find webchat, Telegram, and Luca Terminal sessions updated in the last 6 hours
+2. Find webchat, Telegram, and terminal sessions updated in the last 6 hours
 3. For each: run openclaw sessions history <key> --limit 50
 4. Read current memory/active-context.md to preserve still-relevant threads
 5. Write updated memory/active-context.md
@@ -56,7 +56,7 @@ Last updated: {timestamp}
 
 Rules:
 - Be specific. "Discussing Mnemos" is useless. "Comparing session indexer approaches — 
-  Riley prefers chunking by message pairs, open question is whether to index cron 
+  the user prefers chunking by message pairs, open question is whether to index cron 
   sessions" is useful.
 - Preserve threads from prior observations that are still relevant (<24h old)
 - Mark threads older than 24h as [background] but don't delete them

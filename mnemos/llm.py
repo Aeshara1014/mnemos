@@ -234,10 +234,9 @@ def _dotenv_disabled() -> bool:
 def _env_search_paths() -> list:
     """Filesystem locations to search for .env files.
 
-    MNEMOS_ENV_PATHS (colon-separated paths) takes precedence. The legacy
-    workspace locations remain as a fallback so existing deployments keep
-    working — but they are personal-machine paths, the same leak class as
-    hardcoded agent names; prefer MNEMOS_ENV_PATHS.
+    MNEMOS_ENV_PATHS (colon-separated paths) takes precedence; otherwise
+    the working directory's .env (typically the agent workspace) and the
+    shared ~/.mnemos/.env are checked.
     """
     from pathlib import Path
 
@@ -245,9 +244,8 @@ def _env_search_paths() -> list:
     if raw:
         return [Path(p).expanduser() for p in raw.split(":") if p.strip()]
     return [
-        Path.home() / "clawd" / ".env",
-        Path.home() / "clawd-luca" / ".env",
-        Path.home() / "clawd-anima" / ".env",
+        Path.cwd() / ".env",
+        Path.home() / ".mnemos" / ".env",
     ]
 
 

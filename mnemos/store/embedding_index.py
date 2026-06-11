@@ -25,30 +25,18 @@ from pathlib import Path
 from typing import Any
 
 
-# --- Key resolution (same pattern as mnemos/llm.py) ---
+# --- Key resolution (shared with mnemos/llm.py) ---
 
 def _load_env_key(key_name: str) -> str | None:
-    """Try to load a key from environment, then from .env files."""
-    val = os.environ.get(key_name)
-    if val:
-        return val
-    
-    env_paths = [
-        Path.home() / "clawd" / ".env",
-        Path.home() / "clawd-luca" / ".env",
-        Path.home() / "clawd-anima" / ".env",
-        Path.cwd() / ".env",
-    ]
-    for env_path in env_paths:
-        if env_path.exists():
-            try:
-                for line in env_path.read_text().splitlines():
-                    line = line.strip()
-                    if line.startswith(f"{key_name}="):
-                        return line.split("=", 1)[1].strip().strip("'\"")
-            except Exception:
-                continue
-    return None
+    """Load a key from the environment or the configured .env locations.
+
+    Delegates to llm._load_env_key so the search path (MNEMOS_ENV_PATHS,
+    then cwd/.env and ~/.mnemos/.env) and MNEMOS_DISABLE_DOTENV are
+    honored in one place.
+    """
+    from ..llm import _load_env_key as _shared_load_env_key
+
+    return _shared_load_env_key(key_name) or None
 
 
 # --- Gemini API embedding ---
@@ -206,7 +194,7 @@ class EmbeddingIndex:
 
     Usage:
         index = EmbeddingIndex(db_path="~/.mnemos/memory.db")
-        index.index_engram("engram_abc123", "Riley prefers dark mode")
+        index.index_engram("engram_abc123", "The user prefers dark mode")
         results = index.search("UI theme preferences", k=5)
     """
 

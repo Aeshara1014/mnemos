@@ -5,10 +5,10 @@ copies and personalizes identity templates, and outputs instructions for
 setting up OpenClaw crons.
 
 Usage:
-    python -m mnemos.setup.bootstrap --agent-name Nova --workspace ~/nova --user-name Riley
+    python -m mnemos.setup.bootstrap --agent-name Nova --workspace ~/nova --user-name Alex
 
 Or via the CLI:
-    mnemos bootstrap --agent-name Nova --workspace ~/nova --user-name Riley
+    mnemos bootstrap --agent-name Nova --workspace ~/nova --user-name Alex
 """
 
 from __future__ import annotations

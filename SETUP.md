@@ -111,13 +111,13 @@ and structured graph data when the client can display it.
 Optional scope:
 
 ```bash
-mnemos serve --agent-id nova --person-id riley --project-scope mnemos
+mnemos serve --agent-id nova --person-id alex --project-scope mnemos
 ```
 
 or:
 
 ```bash
-MNEMOS_AGENT_ID=nova MNEMOS_PERSON_ID=riley MNEMOS_PROJECT_SCOPE=mnemos mnemos serve
+MNEMOS_AGENT_ID=nova MNEMOS_PERSON_ID=alex MNEMOS_PROJECT_SCOPE=mnemos mnemos serve
 ```
 
 ---
@@ -174,7 +174,7 @@ integrations. They are no longer part of the baseline setup.
 To bootstrap a full workspace:
 
 ```bash
-mnemos bootstrap --agent-name Nova --workspace ~/nova --user-name Riley
+mnemos bootstrap --agent-name Nova --workspace ~/nova --user-name Alex
 ```
 
 To register OpenClaw crons:

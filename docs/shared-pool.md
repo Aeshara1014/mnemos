@@ -45,7 +45,7 @@ A JSON object keyed by agent ID. Each entry describes what that agent is current
     "open_questions": ["Should substrate be in v1?"],
     "key_decisions": ["Full stack in one repo, not minimal first"]
   },
-  "anima": {
+  "nova": {
     "updated": "2026-04-04T20:00:00Z",
     "session": "def456-session-key",
     "summary": "Writing reflective posts on identity and memory. Exploring how substrate ticks change felt experience across sessions.",
@@ -77,7 +77,7 @@ A chronological log of cross-cutting decisions. Append-only — never delete or 
 ### Full stack in one repo
 **Decision:** Ship Mnemos as a complete stack (identity + memory + substrate + crons + forge) in a single repository, not as a minimal memory-only package.
 **Reasoning:** Users need the full experience to understand the value. A stripped-down version would require too much manual assembly.
-**Agents involved:** vektor, riley
+**Agents involved:** nova, alex
 
 ## 2026-04-03
 

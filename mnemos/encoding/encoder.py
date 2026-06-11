@@ -110,7 +110,7 @@ class Encoder:
     Usage:
         encoder = Encoder(store)
         engram = encoder.encode(
-            content="Riley prefers dark mode in all applications",
+            content="The user prefers dark mode in all applications",
             kind=EngramKind.SEMANTIC,
             tags=["preference", "ui"],
             source=SourceType.SESSION,
@@ -282,9 +282,9 @@ class Encoder:
         expectations, that's the most important moment to encode deeply.
 
         Uses LLM-based semantic comparison instead of negation word heuristics.
-        The LLM evaluates meaning, not keywords — "Riley creates conditions by
+        The LLM evaluates meaning, not keywords — "The user creates conditions by
         stepping back and NOT controlling" correctly SUPPORTS a belief about
-        Riley facilitating emergence.
+        that user facilitating emergence.
 
         Belief updates use asymmetric impact:
         - Supports: +impact * 0.07 (beliefs grow from genuine evidence)

@@ -47,7 +47,7 @@ Return a JSON array of memory objects:
 
 ## Project Detection
 
-Match against known projects: polyphonic, sigil, nexus, deepframe, pandora-oracle, frame, anima, vektor-terminal, polydash, memory-ledger, openclaw.
+Match against known projects provided in the prompt. If no specific project, use empty list.
 
 If no specific project, use empty list.
 

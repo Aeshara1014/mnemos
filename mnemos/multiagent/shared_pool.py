@@ -67,7 +67,7 @@ class SharedPool:
     Usage:
         pool = SharedPool()  # defaults to ~/.mnemos/shared.db
         pool.publish(engram, visibility="shared")
-        shared_memories = pool.get_shared(agent_id="anima", limit=50)
+        shared_memories = pool.get_shared(agent_id="nova", limit=50)
     """
 
     def __init__(self, shared_db_path: str = "~/.mnemos/shared.db") -> None:

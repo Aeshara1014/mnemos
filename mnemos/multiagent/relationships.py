@@ -80,8 +80,8 @@ class RelationshipTracker:
 
     Usage:
         tracker = RelationshipTracker(shared_pool)
-        tracker.record_interaction("anima", "vektor", topic="architecture")
-        rel = tracker.get_relationship("anima", "vektor")
+        tracker.record_interaction("nova", "orin", topic="architecture")
+        rel = tracker.get_relationship("nova", "orin")
         collaborators = tracker.get_collaborators("vektor")
     """
 

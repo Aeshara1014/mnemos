@@ -206,13 +206,13 @@ python3 scripts/forge.py \
 ```
 
 ### Clone an existing agent
-**User:** "Clone anima onto a different model"
+**User:** "Clone an agent onto a different model"
 
 ```bash
 python3 scripts/forge.py \
-  --name anima-experimental \
+  --name scout-experimental \
   --model deepseek/deepseek-r1 \
-  --clone-from ~/clawd-anima
+  --clone-from ~/clawd-scout
 ```
 
 ### Dispatch a single task

@@ -39,7 +39,7 @@ class PromptBuilder:
         builder = PromptBuilder(store=store)
         memory_section = builder.build(
             cue="Tell me about the project architecture",
-            agent_id="anima",
+            agent_id="nova",
             token_budget=2000,
         )
     """

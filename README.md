@@ -96,14 +96,14 @@ mnemos serve
 With explicit scope:
 
 ```bash
-MNEMOS_AGENT_ID=nova MNEMOS_PERSON_ID=riley MNEMOS_PROJECT_SCOPE=mnemos \
+MNEMOS_AGENT_ID=nova MNEMOS_PERSON_ID=alex MNEMOS_PROJECT_SCOPE=mnemos \
   mnemos serve
 ```
 
 Or:
 
 ```bash
-mnemos serve --agent-id nova --person-id riley --project-scope mnemos
+mnemos serve --agent-id nova --person-id alex --project-scope mnemos
 ```
 
 ---
@@ -230,7 +230,7 @@ Optional environment variables:
 
 ```bash
 MNEMOS_AGENT_ID=nova
-MNEMOS_PERSON_ID=riley
+MNEMOS_PERSON_ID=alex
 MNEMOS_PROJECT_SCOPE=mnemos
 MNEMOS_DB_PATH=~/.mnemos/nova.db
 ```

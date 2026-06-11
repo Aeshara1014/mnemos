@@ -7,7 +7,7 @@ Two batched classification calls per encoding:
 2. Belief comparison — given a new memory + active beliefs,
    determine if each is supported, contradicted, or unaffected.
 
-Design decisions (validated by Luca, Round 4):
+Design decisions (validated in agent design review):
 - Batched calls: all candidates in one prompt, all beliefs in one prompt
 - 7 connection types + NONE: supports, contradicts, causes, extends,
   parallels, synthesizes, grounds
@@ -54,7 +54,8 @@ RELATION_MAP: dict[str, ConnectionRelation] = {
 # Minimum confidence threshold — below this, skip the connection
 MIN_CONFIDENCE = 0.5
 
-# Belief impact multipliers (asymmetric per Luca's recommendation)
+# Belief impact multipliers (asymmetric by design: support accrues
+# faster than contradiction erodes, so beliefs are stable but revisable)
 BELIEF_SUPPORT_MULTIPLIER = 0.07
 BELIEF_CONTRADICT_MULTIPLIER = 0.04
 BELIEF_CONFIDENCE_FLOOR = 0.05
@@ -113,9 +114,9 @@ For each belief, respond with one of:
 
 ## Critical Rules
 
-1. **Mentioning a topic is NOT contradiction.** A memory about Riley that contains the word "not" does not contradict a belief about Riley. Read the MEANING, not the keywords.
+1. **Mentioning a topic is NOT contradiction.** A memory about a person that contains the word "not" does not contradict a belief about that person. Read the MEANING, not the keywords.
 
-2. **Describing a belief is not contradicting it.** "Riley creates conditions for emergence by stepping back and NOT controlling" SUPPORTS a belief about Riley facilitating emergence — it doesn't contradict it just because it contains "not."
+2. **Describing a belief is not contradicting it.** "The user creates conditions for emergence by stepping back and NOT controlling" SUPPORTS a belief about that user facilitating emergence — it doesn't contradict it just because it contains "not."
 
 3. **Evidence of failure is genuine contradiction.** If a system designed to do X actively does the opposite of X, that IS contradiction. Be honest about real problems.
 

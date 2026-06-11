@@ -43,7 +43,7 @@ class AttestationService:
     """Manages memory attestation for provenance verification.
 
     Usage:
-        service = AttestationService(agent_id="anima")
+        service = AttestationService(agent_id="nova")
         attestation = service.attest(engram)
         is_valid = service.verify(attestation, engram)
     """

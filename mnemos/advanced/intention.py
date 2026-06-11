@@ -6,7 +6,7 @@ Each intention has trigger conditions that, when met, surface the intention
 to the agent's attention.
 
 Example:
-    "When Riley mentions the project deadline, remind them about
+    "When the user mentions the project deadline, remind them about
      the code review they requested."
 
 Intentions are stored as engrams with kind=PROSPECTIVE and linked

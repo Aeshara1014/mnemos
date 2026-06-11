@@ -37,7 +37,7 @@ class MnemosSession:
 
     Usage:
         session = MnemosSession(store=store, encoder=encoder)
-        session.start("session_123", "anima")
+        session.start("session_123", "nova")
 
         # As messages come in:
         session.on_message("What's the weather?", role="user")
