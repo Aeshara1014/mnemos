@@ -18,8 +18,11 @@ appropriate client, or None if no API keys are found.
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Protocol, runtime_checkable
+
+logger = logging.getLogger("mnemos.llm")
 
 
 @runtime_checkable
@@ -276,18 +279,50 @@ def _load_openclaw_openrouter_key() -> str:
 
 
 def create_client() -> "LLMClient | None":
-    """Auto-detect and create the appropriate LLM client.
+    """Auto-detect and create the appropriate LLM client, gated by
+    substrate affinity.
 
-    Checks env vars and .env files in order:
+    Provider resolution checks env vars and .env files in order:
     1. MNEMOS_LLM_PROVIDER env var (openai|anthropic|openrouter) — forces provider
     2. ANTHROPIC_API_KEY → AnthropicClient
     3. OPENROUTER_API_KEY → OpenRouterClient
     4. OPENAI_API_KEY → OpenAIClient
     5. Neither → None (system uses rule-based fallbacks)
 
+    Affinity gate (see mnemos.affinity): if MNEMOS_AGENT_MODEL is set and
+    the resolved substrate model violates MNEMOS_SUBSTRATE_AFFINITY
+    (strict|family|open; default family), this returns None so that deep
+    maintenance gracefully degrades to rule-based local passes instead of
+    letting a foreign model rewrite the agent's memories.
+
     Returns:
-        LLMClient instance, or None if no API keys found.
+        LLMClient instance, or None if no API keys found or affinity blocks.
     """
+    client = _create_client_unchecked()
+    if client is None:
+        return None
+
+    from .affinity import check_affinity
+
+    agent_model = os.environ.get("MNEMOS_AGENT_MODEL", "").strip() or _load_env_key(
+        "MNEMOS_AGENT_MODEL"
+    )
+    policy = os.environ.get("MNEMOS_SUBSTRATE_AFFINITY", "").strip() or _load_env_key(
+        "MNEMOS_SUBSTRATE_AFFINITY"
+    )
+    substrate_model = getattr(client, "_model", "") or ""
+
+    check = check_affinity(agent_model, substrate_model, policy or "family")
+    if not check.allowed:
+        logger.warning("Substrate affinity: %s", check.message)
+        return None
+    if "differs" in check.message or "unenforced" in check.message:
+        logger.info("Substrate affinity: %s", check.message)
+    return client
+
+
+def _create_client_unchecked() -> "LLMClient | None":
+    """Resolve provider/model from environment without the affinity gate."""
     # Check for model override (env var or .env file)
     model_override = os.environ.get("MNEMOS_MODEL", "").strip()
     if not model_override:
