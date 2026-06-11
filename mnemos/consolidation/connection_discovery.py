@@ -144,7 +144,7 @@ def run_connection_discovery(
 
         store.save_engram(engram)
 
-    # ── Phase B: Reclassify old "supports" connections ──
+    # ── Phase B: Reclassify unclassified connections ──
     if llm_client:
         _reclassify_old_connections(
             store, llm_client, all_active,
@@ -154,6 +154,17 @@ def run_connection_discovery(
     return stats
 
 
+# Relations that were mechanically formed rather than semantically
+# classified: legacy "supports" monoculture edges and the structural
+# co-activation edges written by retrieval reconsolidation.
+_RECLASSIFIABLE_RELATIONS = (
+    ConnectionRelation.SUPPORTS,
+    "supports",
+    ConnectionRelation.CO_ACTIVATED,
+    "co_activated",
+)
+
+
 def _reclassify_old_connections(
     store: EngramStore,
     llm_client: Any,
@@ -161,12 +172,13 @@ def _reclassify_old_connections(
     batch_size: int,
     stats: dict,
 ) -> None:
-    """Reclassify old "supports" connections using LLM classification.
+    """Reclassify mechanically-formed connections using LLM classification.
 
-    Finds connections created by encoding/consolidation that are type "supports"
-    and reclassifies them. NONE results → remove the connection (false positive).
+    Finds connections that carry no real semantic judgment — the legacy
+    "supports" monoculture and retrieval's "co_activated" edges — and
+    classifies them. NONE results → remove the connection (false positive).
     """
-    # Find engrams with "supports" connections that were never LLM-classified
+    # Find engrams with unclassified connections
     reclassified_count = 0
 
     for engram in all_active:
@@ -174,18 +186,17 @@ def _reclassify_old_connections(
             break
 
         connections = store.get_connections(engram.id)
-        supports_connections = [
+        raw_connections = [
             c for c in connections
-            if c.relation == ConnectionRelation.SUPPORTS
-            or c.relation == "supports"
+            if c.relation in _RECLASSIFIABLE_RELATIONS
         ]
 
-        if not supports_connections:
+        if not raw_connections:
             continue
 
         # Load the target engrams
         targets = []
-        for conn in supports_connections:
+        for conn in raw_connections:
             target = store.get_engram(conn.target_id)
             if target:
                 targets.append(target)
@@ -199,7 +210,7 @@ def _reclassify_old_connections(
 
         for cls in classifications:
             # Find the existing connection to update
-            for conn in supports_connections:
+            for conn in raw_connections:
                 if conn.target_id == cls.candidate_id:
                     # Update the connection type and strength
                     conn.relation = cls.relation
@@ -211,7 +222,7 @@ def _reclassify_old_connections(
                     break
 
         # Remove connections where LLM returned NONE (false positives)
-        for conn in supports_connections:
+        for conn in raw_connections:
             if conn.target_id not in classified_ids:
                 # Target wasn't classified → check if it was in our targets list
                 if any(t.id == conn.target_id for t in targets):

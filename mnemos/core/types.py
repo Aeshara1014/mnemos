@@ -30,6 +30,13 @@ class ConnectionRelation(str, Enum):
     SYNTHESIZES = "synthesizes"     # Combines multiple sources into unified picture
     GROUNDS = "grounds"             # Provides foundational context giving meaning
 
+    # --- Structural (mechanism-formed, not semantically classified) ---
+    CO_ACTIVATED = "co_activated"   # Retrieved together — correlation, not evidence.
+    # Created by retrieval reconsolidation; the connection discovery pass
+    # may later upgrade it to a semantic relation (or remove it). Writing
+    # these as SUPPORTS would re-seed the relation-type monoculture the
+    # discovery pass was built to fix.
+
     # --- Legacy types (backward compatibility) ---
     ELABORATES = "elaborates"
     TEMPORAL_BEFORE = "temporal_before"

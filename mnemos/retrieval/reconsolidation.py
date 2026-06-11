@@ -86,12 +86,15 @@ def reconsolidate(
     # 4. Accessibility boost — just accessed, very retrievable now
     engram.accessibility = min(1.0, max(engram.accessibility, accessibility_floor))
 
-    # 5. Co-retrieval connections — memories retrieved together become linked
+    # 5. Co-retrieval connections — memories retrieved together become
+    # linked. Co-activation is correlation, not evidence: the edge is
+    # CO_ACTIVATED (structural), not SUPPORTS, so the discovery pass can
+    # classify it semantically later instead of inheriting a monoculture.
     for co_id in co_retrieved_ids:
         if co_id != engram.id:
             engram.add_connection(
                 target_id=co_id,
-                relation=ConnectionRelation.SUPPORTS,
+                relation=ConnectionRelation.CO_ACTIVATED,
                 strength=0.3,
                 formed_by="retrieval",
             )

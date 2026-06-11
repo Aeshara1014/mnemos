@@ -56,6 +56,7 @@ _RELATION_WEIGHTS: dict[str, float] = {
     ConnectionRelation.TEMPORAL_AFTER: 0.4,
     ConnectionRelation.CONTRADICTS: 0.5,  # Still propagate — contradictions are relevant
     ConnectionRelation.INTERFERES_WITH: 0.3,
+    ConnectionRelation.CO_ACTIVATED: 0.6,  # Correlation, weaker than evidence relations
 }
 
 
