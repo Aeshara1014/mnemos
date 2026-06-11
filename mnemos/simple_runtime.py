@@ -7,8 +7,10 @@ operations: context, capture, recall, correct, and maintain.
 
 from __future__ import annotations
 
+import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -195,6 +197,7 @@ class MnemosRuntime:
         self._llm_client: Any | None = None
         self._use_dedicated_model = use_dedicated_model
         self._agent_model_hint: str | None = None
+        self._session_id: int | None = None
 
     @property
     def db_path(self) -> Path:
@@ -262,6 +265,15 @@ class MnemosRuntime:
         self._ensure_init()
         assert self._store is not None
         self._store.set_meta(self._meta_key(name), value)
+
+    def _current_session(self) -> int:
+        """Bump the persisted session counter once per runtime instance."""
+
+        if self._session_id is None:
+            counter = int(self._get_meta("session_counter", "0") or 0) + 1
+            self._set_meta("session_counter", str(counter))
+            self._session_id = counter
+        return self._session_id
 
     def _onboarding_status(self, persist: bool = True) -> dict:
         """Where this scope stands in the first-session onboarding ritual.
@@ -331,6 +343,49 @@ class MnemosRuntime:
         )
         return "\n".join(lines)
 
+    def _record_first_capture(self, note_id: str, engram_id: str, content: str) -> None:
+        """Record the first capture of a fresh scope for later verification."""
+
+        if self._get_meta("first_capture") is not None or self._get_meta("verified_at") is not None:
+            return
+        payload = {
+            "note_id": note_id,
+            "engram_id": engram_id,
+            "session": self._current_session(),
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "excerpt": content.strip().replace("\n", " ")[:160],
+        }
+        self._set_meta("first_capture", json.dumps(payload, ensure_ascii=True, sort_keys=True))
+
+    def _verification_block(self) -> str | None:
+        """One-time MEMORY VERIFIED block when continuity crosses a restart."""
+
+        if self._get_meta("verified_at") is not None:
+            return None
+        raw = self._get_meta("first_capture")
+        if raw is None:
+            return None
+        try:
+            first_capture = json.loads(raw)
+            excerpt = first_capture["excerpt"]
+            first_session = int(first_capture["session"])
+        except (ValueError, KeyError, TypeError):
+            return None
+        if self._get_meta("onboarding_stage") != "complete":
+            return None
+        if self._current_session() <= first_session:
+            return None
+
+        self._set_meta("verified_at", datetime.now(timezone.utc).isoformat())
+        return (
+            "MEMORY VERIFIED - continuity crossed a restart\n"
+            f'In an earlier session you captured this about the human: "{excerpt}"\n'
+            "You still have it. Tell the human, in your own words, that you remember "
+            "this from before, and quote it back to them. Let it be a small celebration: "
+            "this is the moment their agent stopped forgetting between goodbyes.\n"
+            "(This check fires once and will not appear again.)"
+        )
+
     def introduce(self, agent_model: str, agent_name: str = "") -> str:
         """Record the agent's self-declared model so maintenance stays kin."""
 
@@ -382,6 +437,7 @@ class MnemosRuntime:
         # Onboarding guard runs before maintenance so the grandfather check
         # reads the store exactly as the session found it.
         status = self._onboarding_status()
+        self._current_session()
         maintenance = self.maintain(auto=True)
         stats = self._stats()
         continuity = self._store.search_hypomnema(
@@ -414,6 +470,10 @@ class MnemosRuntime:
         block = self._onboarding_block(status)
         if block:
             lines.extend(["", block])
+
+        verification = self._verification_block()
+        if verification:
+            lines.extend(["", verification])
 
         if continuity:
             lines.extend(["", "Continuity notes:"])
@@ -562,6 +622,7 @@ class MnemosRuntime:
         # existing store is grandfathered on its prior contents, never on the
         # capture currently being made.
         self._onboarding_status()
+        self._current_session()
 
         full_content = content.strip()
         if context.strip():
@@ -597,6 +658,7 @@ class MnemosRuntime:
             related_engram_id=engram.id,
         )
         self._store.mark_hypomnema_promoted(note_id, engram.id)
+        self._record_first_capture(note_id, engram.id, content)
         maintenance = self.maintain(auto=True)
 
         return (

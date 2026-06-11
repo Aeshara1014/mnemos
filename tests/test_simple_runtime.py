@@ -432,3 +432,168 @@ def test_introduce_hint_gates_dedicated_model(tmp_path, monkeypatch):
         assert runtime.has_dedicated_model is True
     finally:
         runtime.close()
+
+
+def _runtime(tmp_path, name="memory.db"):
+    return MnemosRuntime(
+        db_path=str(tmp_path / name),
+        agent_id="nova",
+        person_id="riley",
+        project_scope="demo",
+        use_dedicated_model=False,
+    )
+
+
+def test_first_capture_records_meta_once(tmp_path):
+    import json
+
+    from mnemos.store.sqlite_store import EngramStore
+
+    runtime = _runtime(tmp_path)
+    try:
+        first = runtime.capture("Riley keeps a garden gnome by the door")
+        runtime.capture("A second fact that must not overwrite the first")
+    finally:
+        runtime.close()
+
+    memory_id = re.search(r"Memory ID: (\S+)", first).group(1)
+    note_id = re.search(r"Continuity note ID: (\S+)", first).group(1)
+
+    store = EngramStore(str(tmp_path / "memory.db"))
+    try:
+        raw = store.get_meta("simple:nova:riley:demo:first_capture")
+    finally:
+        store.close()
+
+    assert raw is not None
+    payload = json.loads(raw)
+    assert payload["engram_id"] == memory_id
+    assert payload["note_id"] == note_id
+    assert payload["session"] >= 1
+    assert len(payload["excerpt"]) <= 160
+
+
+def test_verification_fires_on_later_session_then_never_again(tmp_path):
+    from datetime import datetime
+
+    from mnemos.store.sqlite_store import EngramStore
+
+    runtime1 = _runtime(tmp_path)
+    try:
+        runtime1.context()
+        runtime1.introduce("claude-opus-4-6")
+        runtime1.capture("The garden gnome is named Bartholomew")
+        same_session = runtime1.context()
+    finally:
+        runtime1.close()
+
+    assert "MEMORY VERIFIED" not in same_session
+
+    runtime2 = _runtime(tmp_path)
+    try:
+        later_session = runtime2.context()
+    finally:
+        runtime2.close()
+
+    assert "MEMORY VERIFIED" in later_session
+    assert "Bartholomew" in later_session
+
+    runtime3 = _runtime(tmp_path)
+    try:
+        after_verified = runtime3.context()
+    finally:
+        runtime3.close()
+
+    assert "MEMORY VERIFIED" not in after_verified
+
+    store = EngramStore(str(tmp_path / "memory.db"))
+    try:
+        verified_at = store.get_meta("simple:nova:riley:demo:verified_at")
+    finally:
+        store.close()
+
+    assert verified_at is not None
+    assert datetime.fromisoformat(verified_at) is not None
+
+
+def test_verification_waits_for_completed_onboarding(tmp_path):
+    runtime1 = _runtime(tmp_path)
+    try:
+        runtime1.capture("A fact captured before any introduction")
+    finally:
+        runtime1.close()
+
+    runtime2 = _runtime(tmp_path)
+    try:
+        packet = runtime2.context()
+    finally:
+        runtime2.close()
+
+    assert "MEMORY VERIFIED" not in packet
+    assert "ONBOARDING - almost done" in packet
+
+
+def test_grandfathered_scope_never_verifies(tmp_path):
+    from mnemos.store.sqlite_store import EngramStore
+
+    db_path = str(tmp_path / "memory.db")
+    seed = EngramStore(db_path)
+    try:
+        seed.write_hypomnema_entry(
+            "Legacy continuity that predates verification.",
+            agent_id="nova",
+            person_id="riley",
+            project_scope="demo",
+        )
+    finally:
+        seed.close()
+
+    runtime1 = _runtime(tmp_path)
+    try:
+        runtime1.context()
+        runtime1.capture("something new")
+    finally:
+        runtime1.close()
+
+    runtime2 = _runtime(tmp_path)
+    try:
+        packet = runtime2.context()
+    finally:
+        runtime2.close()
+
+    assert "MEMORY VERIFIED" not in packet
+
+    store = EngramStore(db_path)
+    try:
+        assert store.get_meta("simple:nova:riley:demo:first_capture") is None
+    finally:
+        store.close()
+
+
+def test_session_counter_bumps_once_per_instance(tmp_path):
+    from mnemos.store.sqlite_store import EngramStore
+
+    runtime1 = _runtime(tmp_path)
+    try:
+        runtime1.context()
+        runtime1.context()
+    finally:
+        runtime1.close()
+
+    store = EngramStore(str(tmp_path / "memory.db"))
+    try:
+        assert store.get_meta("simple:nova:riley:demo:session_counter") == "1"
+    finally:
+        store.close()
+
+    runtime2 = _runtime(tmp_path)
+    try:
+        runtime2.context()
+    finally:
+        runtime2.close()
+
+    store = EngramStore(str(tmp_path / "memory.db"))
+    try:
+        assert store.get_meta("simple:nova:riley:demo:session_counter") == "2"
+    finally:
+        store.close()
