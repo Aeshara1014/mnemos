@@ -1198,6 +1198,30 @@ class EngramStore:
         )
         conn.commit()
 
+    def get_consolidation_runs(
+        self, pass_name: str, limit: int = 5
+    ) -> list[dict]:
+        """Most recent consolidation_log rows for a pass, newest first.
+
+        The stats column is JSON-decoded. The table has no agent_id
+        column; passes that need agent scoping carry it inside stats.
+        """
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT * FROM consolidation_log WHERE pass_name = ? "
+            "ORDER BY started_at DESC LIMIT ?",
+            (pass_name, limit),
+        ).fetchall()
+        out = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["stats"] = json.loads(item.get("stats") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                item["stats"] = {}
+            out.append(item)
+        return out
+
     # ── Stats ──
 
     def get_stats(self, agent_id: str = "default") -> dict:

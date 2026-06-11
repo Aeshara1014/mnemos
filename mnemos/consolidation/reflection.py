@@ -124,7 +124,7 @@ def run_reflection_pass(
             stats["thoughts_generated"] += 1
 
     # 3. SHIFT 5: Compute identity from graph (not narrative generation)
-    profile = _compute_identity_profile(store, all_engrams, identity)
+    profile = compute_identity_profile(store, all_engrams, identity)
 
     # Store the computed profile as the self-summary (readable form)
     identity.epoch_state.self_summary = profile.to_summary()
@@ -157,7 +157,7 @@ def _llm_generate_thoughts(
         return []
 
 
-def _compute_identity_profile(
+def compute_identity_profile(
     store: EngramStore,
     all_engrams: list,
     identity: AgentIdentity,
@@ -166,6 +166,9 @@ def _compute_identity_profile(
 
     Shift 5: Identity is what you keep returning to. The shape of the
     connection graph IS who you are.
+
+    Public: identity_diff compares this computed profile against the
+    declared SOUL.md.
     """
     agent_id = identity.memory_profile.agent_id
 

@@ -11,6 +11,8 @@ Commands:
     mnemos export [--workspace]  Export workspace files (MEMORY.md, etc.)
     mnemos setup-openclaw        Register cron jobs for OpenClaw
     mnemos bootstrap             Bootstrap a complete agent stack
+    mnemos identity diff         Diff graph-derived identity against SOUL.md
+    mnemos identity accept       Accept a divergence, open a new epoch
 """
 
 from __future__ import annotations
@@ -116,6 +118,49 @@ def main(argv: list[str] | None = None) -> int:
     p_doctor.add_argument("--person-id", default=None, help="Person/user scope")
     p_doctor.add_argument("--project-scope", default=None, help="Project/workspace scope")
 
+    # ── identity ──
+    p_identity = sub.add_parser("identity", help="Computed vs declared identity")
+    identity_sub = p_identity.add_subparsers(dest="identity_command")
+    p_id_diff = identity_sub.add_parser(
+        "diff", help="Diff graph-derived identity against SOUL.md"
+    )
+    p_id_diff.add_argument(
+        "--soul",
+        default=None,
+        help="Path to SOUL.md (default: $MNEMOS_WORKSPACE/SOUL.md, then ./SOUL.md)",
+    )
+    p_id_diff.add_argument("--json", action="store_true", help="Emit machine-readable report")
+    p_id_diff.add_argument(
+        "--no-note",
+        action="store_true",
+        help="Do not write the continuity note that surfaces at next mnemos_context",
+    )
+    p_id_diff.add_argument(
+        "--no-enrich",
+        action="store_true",
+        help="Skip optional model-assisted annotation",
+    )
+    p_id_diff.add_argument("--db-path", default=argparse.SUPPRESS, help="Database path")
+    p_id_diff.add_argument("--agent-id", default=argparse.SUPPRESS, help="Agent identity")
+    p_id_diff.add_argument("--person-id", default=None, help="Person/user scope")
+    p_id_diff.add_argument("--project-scope", default=None, help="Project/workspace scope")
+    p_id_accept = identity_sub.add_parser(
+        "accept", help="Accept a divergence and open a new epoch"
+    )
+    p_id_accept.add_argument(
+        "--divergence",
+        type=int,
+        required=True,
+        metavar="N",
+        help="Divergence number from the last `identity diff` run",
+    )
+    p_id_accept.add_argument("--note", default="", help="Optional note recorded with the transition")
+    p_id_accept.add_argument("--json", action="store_true", help="Emit machine-readable result")
+    p_id_accept.add_argument("--db-path", default=argparse.SUPPRESS, help="Database path")
+    p_id_accept.add_argument("--agent-id", default=argparse.SUPPRESS, help="Agent identity")
+    p_id_accept.add_argument("--person-id", default=None, help="Person/user scope")
+    p_id_accept.add_argument("--project-scope", default=None, help="Project/workspace scope")
+
     # ── mcp ──
     p_mcp = sub.add_parser("mcp", help="MCP client helpers")
     mcp_sub = p_mcp.add_subparsers(dest="mcp_command")
@@ -155,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         "index": _cmd_index,
         "bridge": _cmd_bridge,
         "doctor": _cmd_doctor,
+        "identity": _cmd_identity,
         "mcp": _cmd_mcp,
     }
 
@@ -503,6 +549,18 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         return 0
     finally:
         runtime.close()
+
+
+def _cmd_identity(args: argparse.Namespace) -> int:
+    """Computed-vs-declared identity operations."""
+    from .identity_diff import run_accept_command, run_diff_command
+
+    if getattr(args, "identity_command", None) == "diff":
+        return run_diff_command(args)
+    if getattr(args, "identity_command", None) == "accept":
+        return run_accept_command(args)
+    print("Usage: mnemos identity {diff|accept}", file=sys.stderr)
+    return 1
 
 
 def _cmd_mcp(args: argparse.Namespace) -> int:
