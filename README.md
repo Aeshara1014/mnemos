@@ -10,7 +10,7 @@ database setup, tags, or `agent_id` plumbing.
 The full Mnemos architecture is still here: scoped continuity, hypomnema,
 durable engrams, reconsolidation, decay, connection discovery, beliefs,
 substrate work, and cross-agent layers. Simple mode hides that machinery behind
-five tools so normal agents can use it safely.
+seven tools so normal agents can use it safely.
 
 SQLite-backed. No external services required for baseline memory. Dedicated
 model providers are optional for richer deep maintenance.
@@ -73,7 +73,7 @@ These print MCP JSON snippets you can paste into the client config.
 
 `mnemos serve` starts simple mode by default.
 
-Simple mode exposes only five user-facing tools:
+Simple mode exposes only seven user-facing tools:
 
 | Tool | Purpose |
 |------|---------|
@@ -82,6 +82,8 @@ Simple mode exposes only five user-facing tools:
 | `mnemos_recall` | Search scoped continuity and durable memory with natural language. |
 | `mnemos_correct` | Update, supersede, or archive stale memory. |
 | `mnemos_maintain` | Run the best available maintenance without requiring setup. |
+| `mnemos_introduce` | Let the agent declare its own model id and name so memory maintenance stays kin from day one. |
+| `mnemos_health` | Human-relayable health card: store location and size, counts, last maintenance cycle and who performed it, affinity verdict, onboarding state, last dream entry. |
 
 Agents do not need to pass tags, memory kinds, confidence, source types, or
 agent IDs. Mnemos resolves scope once from CLI flags, environment, config, and

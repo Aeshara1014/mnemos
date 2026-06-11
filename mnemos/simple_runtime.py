@@ -1,8 +1,8 @@
 """Simple-mode continuity runtime for Mnemos.
 
 This module is intentionally MCP-agnostic so the product path can be tested
-without a running client. It exposes the real Mnemos stack through five simple
-operations: context, capture, recall, correct, and maintain.
+without a running client. It exposes the real Mnemos stack through seven simple
+operations: context, capture, recall, correct, maintain, introduce, and health.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ SIMPLE_TOOL_NAMES = (
     "mnemos_correct",
     "mnemos_maintain",
     "mnemos_introduce",
+    "mnemos_health",
 )
 
 
@@ -971,6 +972,108 @@ class MnemosRuntime:
         except Exception:
             return False
 
+    def health(self) -> dict[str, Any]:
+        """Read-only snapshot of this scope's memory health.
+
+        Unlike context(), this never runs maintenance, never bumps the
+        session counter, and never writes onboarding or verification meta.
+        Safe to call any number of times without changing the store.
+        """
+
+        self._ensure_init()
+        assert self._store is not None
+
+        stats = self._stats()
+        db_path = self.db_path
+        size_bytes = db_path.stat().st_size if db_path.exists() else 0
+
+        last_cycle: dict[str, Any] | None = None
+        runs = self._store.get_consolidation_runs("cycle", limit=1)
+        if runs:
+            row = runs[0]
+            cycle_stats = row.get("stats") or {}
+            substrate = cycle_stats.get("substrate") or {}
+            last_cycle = {
+                "completed_at": row.get("completed_at"),
+                "cycle_type": cycle_stats.get("cycle_type"),
+                "passes_run": list(cycle_stats.get("passes_run") or []),
+                "substrate_model": substrate.get("model"),
+                "substrate_provider": substrate.get("provider"),
+                "affinity_allowed": substrate.get("affinity_allowed"),
+            }
+
+        from .llm import resolve_affinity_status
+
+        affinity = resolve_affinity_status(
+            self._llm_client,
+            resolve_if_missing=False,
+            agent_model_hint=self._agent_model_hint,
+        )
+
+        # persist=False keeps the onboarding probe write-free: it only
+        # reads meta and stats, never records a stage transition.
+        status = self._onboarding_status(persist=False)
+
+        verified_at_meta = self._get_meta("verified_at")
+        if verified_at_meta == "skipped":
+            verification_status = "skipped"
+            verified_at = None
+        elif verified_at_meta is not None:
+            verification_status = "verified"
+            verified_at = verified_at_meta
+        elif self._get_meta("first_capture") is not None:
+            verification_status = "pending"
+            verified_at = None
+        else:
+            verification_status = "not-started"
+            verified_at = None
+
+        dream = fetch_active_dream_entry(self._store, self.scope)
+        dream_last_written_at = self._get_meta("dream_last_written_at")
+        dream_excerpt: str | None = None
+        if dream:
+            dream_excerpt = " ".join(str(dream.get("content", "")).split())[:60]
+            if dream_last_written_at is None:
+                dream_last_written_at = dream.get("last_revised_at")
+
+        return {
+            "scope": {
+                "agent_id": self.scope.agent_id,
+                "person_id": self.scope.person_id,
+                "project_scope": self.scope.project_scope,
+            },
+            "store": {
+                "db_path": str(db_path),
+                "size_bytes": int(size_bytes),
+            },
+            "counts": {
+                "memories_active": stats.get("engrams_active", 0),
+                "memories_archived": stats.get("archived", 0),
+                "continuity_notes_active": stats.get("hypomnema_active", 0),
+                "continuity_notes_foundational": stats.get("hypomnema_foundational", 0),
+                "connections": stats.get("connections", 0),
+                "beliefs_active": stats.get("beliefs_active", 0),
+            },
+            "last_cycle": last_cycle,
+            "affinity": affinity,
+            "identity": {
+                "declared_model": self._get_meta("agent_model"),
+                "declared_name": self._get_meta("agent_name"),
+            },
+            "onboarding": {
+                "stage": status["stage"],
+                "session": int(self._get_meta("session_counter", "0") or 0),
+            },
+            "verification": {
+                "status": verification_status,
+                "verified_at": verified_at,
+            },
+            "dream": {
+                "last_written_at": dream_last_written_at,
+                "excerpt": dream_excerpt,
+            },
+        }
+
     def _retrieve(self, query: str, max_results: int = 5) -> list[Any]:
         assert self._store is not None
         assert self._retriever is not None
@@ -1070,4 +1173,95 @@ def _format_memory(result: Any) -> str:
 
 def _indent(text: str) -> str:
     return "\n".join(f"  {line}" if line else "" for line in text.splitlines())
+
+
+def _human_size(num_bytes: int) -> str:
+    """Render a byte count in 1024-base units: "0 B", "412 KB", "1.2 MB"."""
+
+    size = float(max(int(num_bytes), 0))
+    if size < 1024:
+        return f"{int(size)} B"
+    unit = "B"
+    for unit in ("KB", "MB", "GB", "TB"):
+        size /= 1024.0
+        if size < 1024:
+            break
+    if size >= 100 or size.is_integer():
+        return f"{size:.0f} {unit}"
+    return f"{size:.1f} {unit}"
+
+
+def format_health_card(data: dict[str, Any]) -> str:
+    """Render a health() snapshot as a human-relayable card."""
+
+    def line(label: str, value: Any) -> str:
+        return f"{label + ':':<15}{value}"
+
+    scope = data["scope"]
+    store = data["store"]
+    counts = data["counts"]
+
+    last_cycle = data["last_cycle"]
+    if last_cycle is None:
+        cycle_line = "none yet"
+    else:
+        substrate = last_cycle["substrate_model"] or "local rules, no model"
+        cycle_line = (
+            f"{last_cycle['completed_at']} ({last_cycle['cycle_type']}) "
+            f"maintained by {substrate}"
+        )
+
+    affinity = data["affinity"]
+    if not affinity.get("agent_model"):
+        affinity_line = (
+            "agent model not declared yet - call mnemos_introduce "
+            "so maintenance stays kin"
+        )
+    else:
+        affinity_line = affinity["message"]
+
+    verification = data["verification"]
+    verification_line = {
+        "verified": f"verified on {verification['verified_at']}",
+        "pending": "pending first restart",
+        "skipped": "skipped (existing store)",
+        "not-started": "not started",
+    }.get(verification["status"], verification["status"])
+
+    dream = data["dream"]
+    if dream["excerpt"] is None:
+        dream_line = "none yet"
+    else:
+        dream_line = f"{dream['last_written_at']}: \"{dream['excerpt']}\""
+
+    return "\n".join([
+        "Mnemos health card",
+        line(
+            "Scope",
+            f"agent={scope['agent_id']} person={scope['person_id']} "
+            f"project={scope['project_scope']}",
+        ),
+        line("Store", f"{store['db_path']} ({_human_size(store['size_bytes'])})"),
+        line(
+            "Memories",
+            f"{counts['memories_active']} active, "
+            f"{counts['memories_archived']} archived",
+        ),
+        line(
+            "Continuity",
+            f"{counts['continuity_notes_active']} notes "
+            f"({counts['continuity_notes_foundational']} foundational)",
+        ),
+        line("Connections", counts["connections"]),
+        line("Beliefs", f"{counts['beliefs_active']} active"),
+        line("Last cycle", cycle_line),
+        line("Affinity", affinity_line),
+        line(
+            "Onboarding",
+            f"{data['onboarding']['stage']} (session {data['onboarding']['session']})",
+        ),
+        line("Verification", verification_line),
+        line("Last dream", dream_line),
+        "Everything on this card is safe to relay to the human in plain words.",
+    ])
 

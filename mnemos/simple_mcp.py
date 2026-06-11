@@ -16,7 +16,7 @@ from mcp import types
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp import FastMCP
 
-from .simple_runtime import MnemosRuntime, SIMPLE_TOOL_NAMES
+from .simple_runtime import MnemosRuntime, SIMPLE_TOOL_NAMES, format_health_card
 
 logger = logging.getLogger("mnemos.simple_mcp")
 
@@ -310,6 +310,29 @@ def register_simple_tools(server: FastMCP, *, include_recall: bool = True) -> No
         MNEMOS_AGENT_MODEL environment setting always takes precedence.
         """
         return _get_runtime().introduce(agent_model=agent_model, agent_name=agent_name)
+
+    @server.tool(
+        annotations=_annotations(
+            title="Mnemos health card",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+        )
+    )
+    def mnemos_health() -> Any:
+        """Report a human-relayable health card for this memory scope.
+
+        Read-only. Shows where memory lives, how much there is, who performed
+        the last maintenance cycle, the substrate affinity verdict, onboarding
+        and verification progress, and the latest dream journal entry.
+        """
+
+        runtime = _get_runtime()
+        data = runtime.health()
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=format_health_card(data))],
+            structuredContent=data,
+        )
 
 
 register_simple_tools(simple_mcp)

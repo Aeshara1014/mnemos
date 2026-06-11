@@ -2,7 +2,7 @@
 
 import re
 
-from mnemos.simple_runtime import MnemosRuntime
+from mnemos.simple_runtime import MnemosRuntime, format_health_card
 
 
 def test_context_auto_initializes_without_setup(tmp_path):
@@ -597,3 +597,81 @@ def test_session_counter_bumps_once_per_instance(tmp_path):
         assert store.get_meta("simple:nova:riley:demo:session_counter") == "2"
     finally:
         store.close()
+
+
+def test_health_returns_structured_dict(tmp_path):
+    runtime = _runtime(tmp_path)
+    try:
+        runtime.capture("Riley prefers health cards that read like plain words")
+        data = runtime.health()
+    finally:
+        runtime.close()
+
+    assert set(data) == {
+        "scope",
+        "store",
+        "counts",
+        "last_cycle",
+        "affinity",
+        "identity",
+        "onboarding",
+        "verification",
+        "dream",
+    }
+    assert data["counts"]["continuity_notes_active"] >= 1
+    assert data["store"]["size_bytes"] > 0
+    assert data["store"]["db_path"].endswith(".db")
+
+
+def test_health_card_renders_expected_lines(tmp_path):
+    runtime = _runtime(tmp_path)
+    try:
+        runtime.capture("Riley keeps a garden gnome by the door")
+        card = format_health_card(runtime.health())
+    finally:
+        runtime.close()
+
+    for needle in (
+        "Mnemos health card",
+        "Scope:",
+        "Affinity:",
+        "Verification:",
+        "Last dream:",
+        "safe to relay",
+    ):
+        assert needle in card
+
+
+def test_health_reports_last_cycle_after_maintain(tmp_path):
+    runtime = _runtime(tmp_path)
+    try:
+        runtime.maintain()
+        data = runtime.health()
+    finally:
+        runtime.close()
+
+    assert data["last_cycle"]["cycle_type"] == "shallow"
+    assert isinstance(data["last_cycle"]["passes_run"], list)
+
+
+def test_health_does_not_bump_session_or_write_stage(tmp_path):
+    from mnemos.store.sqlite_store import EngramStore
+
+    runtime = _runtime(tmp_path)
+    try:
+        # health() must come first: a truly read-only call leaves a fresh
+        # store with no session counter and no onboarding stage behind.
+        runtime.health()
+
+        store = EngramStore(str(tmp_path / "memory.db"))
+        try:
+            assert store.get_meta("simple:nova:riley:demo:session_counter") is None
+            assert store.get_meta("simple:nova:riley:demo:onboarding_stage") is None
+        finally:
+            store.close()
+
+        packet = runtime.context()
+    finally:
+        runtime.close()
+
+    assert "ONBOARDING - first session" in packet

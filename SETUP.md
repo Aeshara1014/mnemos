@@ -92,6 +92,8 @@ It exposes only:
 - `mnemos_recall`
 - `mnemos_correct`
 - `mnemos_maintain`
+- `mnemos_introduce`
+- `mnemos_health`
 
 The user does not need to set up a database, choose tags, pass agent IDs, learn
 engram/hypomnema terminology, configure OpenClaw, or supply a model key.
@@ -201,7 +203,7 @@ Review generated commands before enabling them.
 1. Run `mnemos doctor`.
 2. Confirm the client config points to `mnemos serve`.
 3. Restart the client session or desktop app.
-4. For simple mode, expect exactly five tools.
+4. For simple mode, expect exactly seven tools.
 5. For advanced mode, use `mnemos serve --mode advanced`.
 
 ### The agent has no prior memory
