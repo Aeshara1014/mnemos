@@ -199,6 +199,7 @@ mnemos mcp install generic            # Print MCP config
 mnemos mcp install claude --write     # Merge Claude Desktop config
 
 mnemos init                           # Initialize a database
+mnemos remember "Prefers tabs"        # Capture continuity from the CLI
 mnemos stats                          # Memory statistics
 mnemos search "debugging strategies"  # Search memories
 mnemos inspect <engram-id>            # Inspect memory details

@@ -13,6 +13,7 @@ Commands:
     mnemos bootstrap             Bootstrap a complete agent stack
     mnemos identity diff         Diff graph-derived identity against SOUL.md
     mnemos identity accept       Accept a divergence, open a new epoch
+    mnemos remember CONTENT      Capture durable continuity from the CLI
 """
 
 from __future__ import annotations
@@ -111,6 +112,20 @@ def main(argv: list[str] | None = None) -> int:
     p_br_remember.add_argument("content", help="Memory content")
     p_br_remember.add_argument("--impact", default="", help="What it meant")
 
+    # ── remember ──
+    p_remember = sub.add_parser(
+        "remember", help="Capture durable continuity from the command line"
+    )
+    p_remember.add_argument("content", help="What to remember")
+    p_remember.add_argument("--context", default="", help="Where/why this came up")
+    p_remember.add_argument(
+        "--importance", default="auto", help="auto, or a number from 0.0 to 1.0"
+    )
+    p_remember.add_argument("--db-path", default=argparse.SUPPRESS, help="Database path")
+    p_remember.add_argument("--agent-id", default=argparse.SUPPRESS, help="Agent identity")
+    p_remember.add_argument("--person-id", default=None, help="Person/user scope")
+    p_remember.add_argument("--project-scope", default=None, help="Project/workspace scope")
+
     # ── doctor ──
     p_doctor = sub.add_parser("doctor", help="Check Mnemos simple-mode readiness")
     p_doctor.add_argument("--db-path", default=argparse.SUPPRESS, help="Database path")
@@ -199,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         "substrate-tick": _cmd_substrate_tick,
         "index": _cmd_index,
         "bridge": _cmd_bridge,
+        "remember": _cmd_remember,
         "doctor": _cmd_doctor,
         "identity": _cmd_identity,
         "mcp": _cmd_mcp,
@@ -520,6 +536,28 @@ def _cmd_bridge(args: argparse.Namespace) -> int:
         print("Usage: mnemos bridge {status|recall|remember}", file=sys.stderr)
         return 1
     return 0
+
+
+def _cmd_remember(args: argparse.Namespace) -> int:
+    """Capture continuity via the same path as the mnemos_capture MCP tool."""
+    from .simple_runtime import MnemosRuntime
+
+    runtime = MnemosRuntime(
+        db_path=getattr(args, "db_path", None),
+        agent_id=getattr(args, "agent_id", None),
+        person_id=getattr(args, "person_id", None),
+        project_scope=getattr(args, "project_scope", None),
+        use_dedicated_model=False,  # CLI capture stays local and deterministic
+    )
+    try:
+        print(
+            runtime.capture(
+                args.content, context=args.context, importance=args.importance
+            )
+        )
+        return 0
+    finally:
+        runtime.close()
 
 
 def _cmd_doctor(args: argparse.Namespace) -> int:
