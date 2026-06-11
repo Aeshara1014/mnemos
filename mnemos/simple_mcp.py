@@ -278,6 +278,19 @@ def register_simple_tools(server: FastMCP, *, include_recall: bool = True) -> No
                     importance="low",
                 )
                 result += "\nHost model assistance: captured maintenance reflection via MCP sampling."
+        if runtime.last_dream_note_id and runtime.last_dream_narrative:
+            polished = await _sample_text(
+                ctx,
+                (
+                    "Rewrite this consolidation diary entry in a warmer first-person voice. "
+                    "Keep every number and fact exactly as stated. Do not add new claims. "
+                    "Keep it under 80 words. Return an empty string if the original is already good.\n\n"
+                    f"{runtime.last_dream_narrative}"
+                ),
+                max_tokens=220,
+            )
+            if polished and runtime.polish_dream(runtime.last_dream_note_id, polished):
+                result += "\nHost model assistance: polished the dream journal entry via MCP sampling."
         return result
 
     @server.tool(

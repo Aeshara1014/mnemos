@@ -121,3 +121,40 @@ class TestEngramStore:
             assert reopened.get_meta("schema_version") is not None
         finally:
             reopened.close()
+
+    def test_get_hypomnema_entries_by_tag_scoped_and_active_only(self, store):
+        """Tag lookup respects scope and active filtering, newest first."""
+        in_scope = {"agent_id": "nova", "person_id": "riley", "project_scope": "demo"}
+
+        tagged_one = store.write_hypomnema_entry(
+            "first tagged note", tags=["dream-journal"], **in_scope
+        )
+        tagged_two = store.write_hypomnema_entry(
+            "second tagged note", tags=["dream-journal", "continuity"], **in_scope
+        )
+        store.write_hypomnema_entry("untagged note", tags=["continuity"], **in_scope)
+        store.write_hypomnema_entry(
+            "other scope note",
+            tags=["dream-journal"],
+            agent_id="vektor",
+            person_id="riley",
+            project_scope="demo",
+        )
+        archived = store.write_hypomnema_entry(
+            "archived tagged note", tags=["dream-journal"], **in_scope
+        )
+        store.archive_hypomnema_entry(archived, reason="test cleanup", **in_scope)
+
+        entries = store.get_hypomnema_entries_by_tag("dream-journal", **in_scope)
+        assert {e["id"] for e in entries} == {tagged_one, tagged_two}
+        assert all(e["active"] for e in entries)
+        # Newest first by last_revised_at.
+        assert entries[0]["id"] == tagged_two
+
+        including_inactive = store.get_hypomnema_entries_by_tag(
+            "dream-journal", active_only=False, limit=10, **in_scope
+        )
+        assert {e["id"] for e in including_inactive} == {tagged_one, tagged_two, archived}
+
+        # Quote-delimited matching keeps tags token-exact.
+        assert store.get_hypomnema_entries_by_tag("dream", **in_scope) == []

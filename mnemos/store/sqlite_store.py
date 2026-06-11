@@ -849,6 +849,33 @@ class EngramStore:
         )
         return scored[: max(1, limit)]
 
+    def get_hypomnema_entries_by_tag(
+        self,
+        tag: str,
+        *,
+        agent_id: str = "default",
+        person_id: str = "user",
+        project_scope: str = "global",
+        active_only: bool = True,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Scoped hypomnema entries carrying an exact tag, newest first."""
+        conn = self._get_conn()
+        sql = (
+            "SELECT * FROM hypomnema_entries "
+            "WHERE agent_id = ? AND person_id = ? AND project_scope = ? "
+            "AND tags_json LIKE ?"
+        )
+        # Quote-delimited match keeps the tag token-exact inside the JSON
+        # array (so "dream" never matches "dream-journal").
+        params: list[Any] = [agent_id, person_id, project_scope, f'%"{tag}"%']
+        if active_only:
+            sql += " AND active = 1"
+        sql += " ORDER BY last_revised_at DESC LIMIT ?"
+        params.append(max(1, limit))
+        rows = conn.execute(sql, params).fetchall()
+        return [self._hydrate_hypomnema_row(dict(row)) for row in rows]
+
     def revise_hypomnema_entry(
         self,
         entry_id: str,

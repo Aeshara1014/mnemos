@@ -17,6 +17,7 @@ from typing import Any
 from .config.loader import load_config
 from .consolidation.daemon import ConsolidationDaemon
 from .core.types import SourceType
+from .dream_journal import DREAM_JOURNAL_TAG, fetch_active_dream_entry
 from .encoding.encoder import Encoder
 from .identity_svg import build_timeline, render_identity_svg, short_label
 from .retrieval.reactive import ReactiveRetriever
@@ -198,6 +199,8 @@ class MnemosRuntime:
         self._use_dedicated_model = use_dedicated_model
         self._agent_model_hint: str | None = None
         self._session_id: int | None = None
+        self.last_dream_note_id: str | None = None
+        self.last_dream_narrative: str | None = None
 
     @property
     def db_path(self) -> Path:
@@ -440,14 +443,20 @@ class MnemosRuntime:
         self._current_session()
         maintenance = self.maintain(auto=True)
         stats = self._stats()
+        # Fetch one extra entry so dropping the dream note (rendered in its
+        # own section below) still leaves max_results continuity notes.
         continuity = self._store.search_hypomnema(
             query,
             agent_id=self.scope.agent_id,
             person_id=self.scope.person_id,
             project_scope=self.scope.project_scope,
-            limit=max_results,
+            limit=max_results + 1,
         )
         continuity = _filter_continuity(query, continuity)
+        continuity = [
+            entry for entry in continuity
+            if DREAM_JOURNAL_TAG not in (entry.get("tags") or [])
+        ][:max_results]
         memories = self._retrieve(query, max_results=max_results) if query else []
 
         lines = [
@@ -474,6 +483,15 @@ class MnemosRuntime:
         verification = self._verification_block()
         if verification:
             lines.extend(["", verification])
+
+        dream = fetch_active_dream_entry(self._store, self.scope)
+        if dream:
+            lines.extend([
+                "",
+                "While you were away:",
+                _indent(dream["content"]),
+                "  (Mnemos wrote this while consolidating memory. Share it with the human if the moment fits.)",
+            ])
 
         if continuity:
             lines.extend(["", "Continuity notes:"])
@@ -884,6 +902,31 @@ class MnemosRuntime:
         )
         stats = daemon.run_cycle(deep=can_run_deep, agent_id=self.scope.agent_id)
         promoted = self._promote_candidates(limit=3)
+
+        # Dream journal: narrate the cycle when it did meaningful work. The
+        # import stays local so a journal failure can never break maintenance.
+        self.last_dream_note_id = None
+        self.last_dream_narrative = None
+        dream_status = "skipped (nothing noteworthy)"
+        try:
+            from .dream_journal import (
+                collect_belief_deltas,
+                compose_dream_narrative,
+                write_dream_entry,
+            )
+
+            deltas = collect_belief_deltas(
+                self._store, self.scope.agent_id, stats.get("started_at", "")
+            )
+            narrative = compose_dream_narrative(stats, deltas, promoted)
+            if narrative:
+                self.last_dream_note_id = write_dream_entry(self._store, self.scope, narrative)
+                self.last_dream_narrative = narrative
+                self._set_meta("dream_last_written_at", datetime.now(timezone.utc).isoformat())
+                dream_status = "updated"
+        except Exception:
+            dream_status = "skipped (write failed)"
+
         if can_run_deep:
             completed = "model-assisted deep maintenance completed"
         elif requested_deep:
@@ -906,11 +949,27 @@ class MnemosRuntime:
             f"Passes: {', '.join(stats.get('passes_run', [])) or 'none'}",
             f"Promoted continuity notes: {promoted}",
             f"Model path: {model_note}",
+            f"Dream journal: {dream_status}",
         ]
         errors = [key for key in stats if key.endswith("_error")]
         for key in errors:
             lines.append(f"{key}: {stats[key]}")
         return "\n".join(lines)
+
+    def polish_dream(self, note_id: str, polished: str) -> bool:
+        """Apply a host-model polish to a dream note. Returns False on any failure."""
+
+        text = (polished or "").strip()
+        if not text or len(text) > 900:
+            return False
+        try:
+            from .dream_journal import polish_dream_entry
+
+            self._ensure_init()
+            polish_dream_entry(self._store, self.scope, note_id, text)
+            return True
+        except Exception:
+            return False
 
     def _retrieve(self, query: str, max_results: int = 5) -> list[Any]:
         assert self._store is not None
