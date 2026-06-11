@@ -48,6 +48,9 @@ def test_simple_tools_have_protocol_risk_annotations():
     assert tools["mnemos_capture"].annotations.destructiveHint is False
     assert tools["mnemos_correct"].annotations.destructiveHint is True
     assert tools["mnemos_maintain"].annotations.destructiveHint is False
+    assert tools["mnemos_introduce"].annotations.readOnlyHint is False
+    assert tools["mnemos_introduce"].annotations.destructiveHint is False
+    assert tools["mnemos_introduce"].annotations.idempotentHint is True
 
 
 def test_simple_tool_schemas_do_not_expose_injected_context():
@@ -108,6 +111,15 @@ def test_simple_stdio_server_lists_and_calls_context(tmp_path):
                 )
                 assert "Mnemos continuity packet" in text
                 assert "agent=smoke" in text
+
+                introduced = await session.call_tool(
+                    "mnemos_introduce", {"agent_model": "claude-sonnet-4-6"}
+                )
+                introduced_text = "\n".join(
+                    block.text for block in introduced.content
+                    if getattr(block, "type", None) == "text"
+                )
+                assert "Introduction recorded." in introduced_text
 
     anyio.run(run_smoke)
 

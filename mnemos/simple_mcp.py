@@ -280,6 +280,24 @@ def register_simple_tools(server: FastMCP, *, include_recall: bool = True) -> No
                 result += "\nHost model assistance: captured maintenance reflection via MCP sampling."
         return result
 
+    @server.tool(
+        annotations=_annotations(
+            title="Introduce yourself to Mnemos",
+            read_only=False,
+            destructive=False,
+            idempotent=True,
+        )
+    )
+    def mnemos_introduce(agent_model: str, agent_name: str = "") -> str:
+        """Declare who you are so Mnemos keeps maintenance kin to you.
+
+        Call once, with agent_model set to your own model id (for example
+        claude-sonnet-4-6) and optionally agent_name. Mnemos uses the declared
+        model so memory maintenance is performed by a kin model. An explicit
+        MNEMOS_AGENT_MODEL environment setting always takes precedence.
+        """
+        return _get_runtime().introduce(agent_model=agent_model, agent_name=agent_name)
+
 
 register_simple_tools(simple_mcp)
 

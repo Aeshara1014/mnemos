@@ -241,3 +241,194 @@ def test_identity_graph_snapshot_contains_svg_and_structured_data(tmp_path):
     assert graph["timeline"]
     assert graph["svg"].startswith("<svg")
     assert "Mnemos Identity Graph" in graph["svg"]
+
+
+def test_fresh_store_context_shows_onboarding_block(tmp_path):
+    runtime = MnemosRuntime(
+        db_path=str(tmp_path / "fresh.db"),
+        agent_id="nova",
+        person_id="riley",
+        project_scope="demo",
+        use_dedicated_model=False,
+    )
+
+    try:
+        packet = runtime.context()
+    finally:
+        runtime.close()
+
+    assert "ONBOARDING - first session" in packet
+    assert "mnemos_introduce" in packet
+    for step in ("1.", "2.", "3.", "4.", "5.", "6."):
+        assert step in packet
+
+
+def test_predating_store_is_grandfathered(tmp_path):
+    from mnemos.store.sqlite_store import EngramStore
+
+    db_path = str(tmp_path / "legacy.db")
+    seed = EngramStore(db_path)
+    try:
+        seed.write_hypomnema_entry(
+            "Legacy continuity that predates the onboarding ritual.",
+            agent_id="nova",
+            person_id="riley",
+            project_scope="demo",
+        )
+    finally:
+        seed.close()
+
+    runtime = MnemosRuntime(
+        db_path=db_path,
+        agent_id="nova",
+        person_id="riley",
+        project_scope="demo",
+        use_dedicated_model=False,
+    )
+    try:
+        packet = runtime.context()
+    finally:
+        runtime.close()
+
+    assert "ONBOARDING" not in packet
+
+    store = EngramStore(db_path)
+    try:
+        assert store.get_meta("simple:nova:riley:demo:onboarding_stage") == "complete"
+        assert store.get_meta("simple:nova:riley:demo:verified_at") == "skipped"
+    finally:
+        store.close()
+
+
+def test_onboarding_block_shortens_after_introduce(tmp_path):
+    runtime = MnemosRuntime(
+        db_path=str(tmp_path / "shorten.db"),
+        agent_id="nova",
+        person_id="riley",
+        project_scope="demo",
+        use_dedicated_model=False,
+    )
+
+    try:
+        runtime.introduce("claude-opus-4-6")
+        packet = runtime.context()
+    finally:
+        runtime.close()
+
+    assert "ONBOARDING - almost done" in packet
+    assert "ONBOARDING - first session" not in packet
+    # The introduce bullet must be gone once the agent has introduced itself...
+    assert "Call mnemos_introduce with agent_model" not in packet
+    # ...while the capture bullet remains until something has been captured.
+    assert "Ask the human for one small, true fact about themselves" in packet
+
+
+def test_onboarding_completes_after_introduce_and_capture(tmp_path):
+    from mnemos.store.sqlite_store import EngramStore
+
+    db_path = str(tmp_path / "complete.db")
+    runtime = MnemosRuntime(
+        db_path=db_path,
+        agent_id="nova",
+        person_id="riley",
+        project_scope="demo",
+        use_dedicated_model=False,
+    )
+
+    try:
+        runtime.introduce("claude-opus-4-6")
+        runtime.capture("My name is Sam")
+        packet = runtime.context()
+    finally:
+        runtime.close()
+
+    assert "ONBOARDING" not in packet
+
+    store = EngramStore(db_path)
+    try:
+        assert store.get_meta("simple:nova:riley:demo:onboarding_stage") == "complete"
+    finally:
+        store.close()
+
+
+def test_introduce_persists_meta_and_confirms(tmp_path):
+    from mnemos.store.sqlite_store import EngramStore
+
+    db_path = str(tmp_path / "introduce.db")
+    runtime = MnemosRuntime(
+        db_path=db_path,
+        agent_id="nova",
+        person_id="riley",
+        project_scope="demo",
+        use_dedicated_model=False,
+    )
+
+    try:
+        result = runtime.introduce("claude-opus-4-6", agent_name="Nova")
+    finally:
+        runtime.close()
+
+    assert "Introduction recorded." in result
+    assert "Agent model: claude-opus-4-6" in result
+    assert "Agent name: Nova" in result
+
+    store = EngramStore(db_path)
+    try:
+        assert store.get_meta("simple:nova:riley:demo:agent_model") == "claude-opus-4-6"
+        assert store.get_meta("simple:nova:riley:demo:agent_name") == "Nova"
+    finally:
+        store.close()
+
+
+def test_introduce_rejects_empty_model(tmp_path):
+    from mnemos.store.sqlite_store import EngramStore
+
+    db_path = str(tmp_path / "reject.db")
+    runtime = MnemosRuntime(
+        db_path=db_path,
+        agent_id="nova",
+        person_id="riley",
+        project_scope="demo",
+        use_dedicated_model=False,
+    )
+
+    try:
+        result = runtime.introduce("   ")
+    finally:
+        runtime.close()
+
+    assert result == (
+        "Introduction needs agent_model: your own model id "
+        "(for example claude-sonnet-4-6)."
+    )
+
+    store = EngramStore(db_path)
+    try:
+        assert store.get_meta("simple:nova:riley:demo:agent_model") is None
+    finally:
+        store.close()
+
+
+def test_introduce_hint_gates_dedicated_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("MNEMOS_LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("MNEMOS_MODEL", "anthropic/claude-sonnet-4-5")
+
+    runtime = MnemosRuntime(
+        db_path=str(tmp_path / "gate.db"),
+        agent_id="nova",
+        person_id="riley",
+        project_scope="demo",
+        use_dedicated_model=True,
+    )
+
+    try:
+        # gpt agent vs claude substrate — family policy blocks the client.
+        runtime.introduce("gpt-5")
+        assert runtime.has_dedicated_model is False
+
+        # claude agent vs claude substrate — kin, client comes through.
+        runtime.introduce("claude-opus-4-6")
+        assert runtime.has_dedicated_model is True
+    finally:
+        runtime.close()

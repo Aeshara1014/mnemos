@@ -31,7 +31,20 @@ SIMPLE_TOOL_NAMES = (
     "mnemos_recall",
     "mnemos_correct",
     "mnemos_maintain",
+    "mnemos_introduce",
 )
+
+
+_ONBOARDING_RITUAL = """\
+ONBOARDING - first session with a fresh memory
+This is the first time you and this human meet with durable memory attached. Before other work, run a short get-to-know-you ritual. Be warm, be brief, ask one question at a time:
+1. Ask what they would like you to call them. Capture the answer with mnemos_capture.
+2. Ask what they are working on right now. Capture the answer with mnemos_capture.
+3. Ask what they want you to always remember. Capture the answer with mnemos_capture.
+4. Ask them for one small, true fact about themselves or their world - something they would smile to hear you recall later. Capture it with mnemos_capture. It becomes part of their first proof that your memory is real.
+5. Call mnemos_introduce with agent_model set to your own model id. You know what model you are - do not ask the human. Add agent_name if you go by a name.
+6. Finish by telling them, in plain words, what you will now remember.
+When you talk to the human, never mention tools, databases, scopes, or model ids. Just talk like someone who intends to remember."""
 
 
 def _dedicated_model_requested() -> bool:
@@ -181,6 +194,7 @@ class MnemosRuntime:
         self._embedding_index: EmbeddingIndex | None = None
         self._llm_client: Any | None = None
         self._use_dedicated_model = use_dedicated_model
+        self._agent_model_hint: str | None = None
 
     @property
     def db_path(self) -> Path:
@@ -206,11 +220,15 @@ class MnemosRuntime:
 
         self._store = EngramStore(self.scope.db_path)
         self._embedding_index = EmbeddingIndex(db_path=self.scope.db_path)
+        # The agent's self-declared model (from mnemos_introduce) feeds the
+        # affinity gate when MNEMOS_AGENT_MODEL is unset. Read it straight
+        # from the freshly created store: _get_meta would re-enter init.
+        self._agent_model_hint = self._store.get_meta(self._meta_key("agent_model"))
         try:
             from .llm import create_client
 
             self._llm_client = (
-                create_client()
+                create_client(agent_model_hint=self._agent_model_hint)
                 if self._use_dedicated_model and _dedicated_model_requested()
                 else None
             )
@@ -232,12 +250,138 @@ class MnemosRuntime:
         assert self._store is not None
         return self._store.get_stats(self.scope.agent_id)
 
+    def _meta_key(self, name: str) -> str:
+        return f"simple:{self.scope.agent_id}:{self.scope.person_id}:{self.scope.project_scope}:{name}"
+
+    def _get_meta(self, name: str, default: str | None = None) -> str | None:
+        self._ensure_init()
+        assert self._store is not None
+        return self._store.get_meta(self._meta_key(name), default)
+
+    def _set_meta(self, name: str, value: str) -> None:
+        self._ensure_init()
+        assert self._store is not None
+        self._store.set_meta(self._meta_key(name), value)
+
+    def _onboarding_status(self, persist: bool = True) -> dict:
+        """Where this scope stands in the first-session onboarding ritual.
+
+        Returns {"stage": str, "introduced": bool, "captured": bool}. Stores
+        that predate onboarding are grandfathered: any existing memory marks
+        the scope complete so an established agent never sees the ritual.
+        """
+
+        stage = self._get_meta("onboarding_stage")
+        stats = self._stats()
+        if stage is None:
+            existing = (
+                stats.get("engrams_active", 0)
+                + stats.get("engrams_consolidating", 0)
+                + stats.get("engrams_dormant", 0)
+                + stats.get("engrams_archived", 0)
+                + stats.get("archived", 0)
+                + stats.get("hypomnema_total", 0)
+            )
+            if existing > 0:
+                stage = "complete"
+                if persist:
+                    self._set_meta("onboarding_stage", stage)
+                    self._set_meta("verified_at", "skipped")
+            else:
+                stage = "fresh"
+                if persist:
+                    self._set_meta("onboarding_stage", stage)
+
+        introduced = bool(self._get_meta("agent_model"))
+        captured = (
+            self._get_meta("first_capture") is not None
+            or stats.get("hypomnema_total", 0) > 0
+        )
+        if stage == "fresh" and introduced and captured:
+            stage = "complete"
+            if persist:
+                self._set_meta("onboarding_stage", stage)
+        return {"stage": stage, "introduced": introduced, "captured": captured}
+
+    def _onboarding_block(self, status: dict) -> str | None:
+        """Build the onboarding reminder for the context packet, if any."""
+
+        if status["stage"] == "complete":
+            return None
+
+        introduced = bool(status["introduced"])
+        captured = bool(status["captured"])
+        if not introduced and not captured:
+            return _ONBOARDING_RITUAL
+
+        lines = ["ONBOARDING - almost done"]
+        if not introduced:
+            lines.append(
+                "- Call mnemos_introduce with agent_model set to your own model id. "
+                "You know what model you are - do not ask the human."
+            )
+        if not captured:
+            lines.append(
+                "- Ask the human for one small, true fact about themselves and "
+                "capture it with mnemos_capture."
+            )
+        lines.append(
+            "Then tell the human what you will remember. This reminder disappears "
+            "once setup is complete."
+        )
+        return "\n".join(lines)
+
+    def introduce(self, agent_model: str, agent_name: str = "") -> str:
+        """Record the agent's self-declared model so maintenance stays kin."""
+
+        model = (agent_model or "").strip()
+        if not model:
+            return (
+                "Introduction needs agent_model: your own model id "
+                "(for example claude-sonnet-4-6)."
+            )
+
+        self._set_meta("agent_model", model)
+        name = agent_name.strip()
+        if name:
+            self._set_meta("agent_name", name)
+
+        # Rebuild so the declared model reaches the affinity gate.
+        self.close()
+        self._ensure_init()
+
+        from .llm import resolve_affinity_status
+
+        status = resolve_affinity_status(
+            self._llm_client,
+            resolve_if_missing=False,
+            agent_model_hint=self._agent_model_hint,
+        )
+
+        lines = [
+            "Introduction recorded.",
+            f"Agent model: {model}",
+            f"Agent name: {name or '(none given)'}",
+            f"Affinity: {status['message']}",
+        ]
+        env_model = os.environ.get("MNEMOS_AGENT_MODEL", "").strip()
+        if env_model:
+            lines.append(
+                f"Note: MNEMOS_AGENT_MODEL={env_model} is set in the environment "
+                "and takes precedence over this declaration."
+            )
+        lines.append("You only need to introduce yourself once for this scope.")
+        return "\n".join(lines)
+
     def context(self, query: str = "", max_results: int = 5) -> str:
         """Return the startup continuity packet for an agent."""
 
         self._ensure_init()
         assert self._store is not None
 
+        # Onboarding guard runs before maintenance so the grandfather check
+        # reads the store exactly as the session found it.
+        status = self._onboarding_status()
         maintenance = self.maintain(auto=True)
         stats = self._stats()
         continuity = self._store.search_hypomnema(
@@ -266,6 +410,10 @@ class MnemosRuntime:
             "Maintenance:",
             _indent(maintenance),
         ]
+
+        block = self._onboarding_block(status)
+        if block:
+            lines.extend(["", block])
 
         if continuity:
             lines.extend(["", "Continuity notes:"])
@@ -409,6 +557,11 @@ class MnemosRuntime:
         self._ensure_init()
         assert self._store is not None
         assert self._encoder is not None
+
+        # Run the onboarding guard before this capture writes anything so an
+        # existing store is grandfathered on its prior contents, never on the
+        # capture currently being made.
+        self._onboarding_status()
 
         full_content = content.strip()
         if context.strip():
@@ -665,6 +818,7 @@ class MnemosRuntime:
             config={},
             llm_client=self._llm_client if can_run_deep else None,
             embedding_index=self._embedding_index,
+            agent_model_hint=self._agent_model_hint,
         )
         stats = daemon.run_cycle(deep=can_run_deep, agent_id=self.scope.agent_id)
         promoted = self._promote_candidates(limit=3)
