@@ -303,7 +303,7 @@ def _load_openclaw_openrouter_key() -> str:
     return ""
 
 
-def create_client() -> "LLMClient | None":
+def create_client(agent_model_hint: str | None = None) -> "LLMClient | None":
     """Auto-detect and create the appropriate LLM client, gated by
     substrate affinity.
 
@@ -320,6 +320,12 @@ def create_client() -> "LLMClient | None":
     maintenance gracefully degrades to rule-based local passes instead of
     letting a foreign model rewrite the agent's memories.
 
+    Args:
+        agent_model_hint: An agent's self-declared model (e.g. from
+            mnemos_introduce), used for the affinity gate when
+            MNEMOS_AGENT_MODEL is unset. The environment variable always
+            takes precedence.
+
     Returns:
         LLMClient instance, or None if no API keys found or affinity blocks.
     """
@@ -327,7 +333,9 @@ def create_client() -> "LLMClient | None":
     if client is None:
         return None
 
-    status = resolve_affinity_status(client, resolve_if_missing=False)
+    status = resolve_affinity_status(
+        client, resolve_if_missing=False, agent_model_hint=agent_model_hint
+    )
     if not status["allowed"]:
         logger.warning("Substrate affinity: %s", status["message"])
         return None
@@ -340,6 +348,7 @@ def resolve_affinity_status(
     client: "LLMClient | None" = None,
     *,
     resolve_if_missing: bool = True,
+    agent_model_hint: str | None = None,
 ) -> dict:
     """Resolve the affinity configuration and verdict without side effects.
 
@@ -347,6 +356,11 @@ def resolve_affinity_status(
     and by the consolidation daemon (report on the client it actually
     holds). With resolve_if_missing=False, a None client means "no
     substrate" rather than "auto-detect one".
+
+    agent_model_hint is an agent's self-declared model (e.g. from
+    mnemos_introduce); it fills in the agent model only when the
+    MNEMOS_AGENT_MODEL environment variable is unset — the environment
+    variable always takes precedence.
 
     Returns the AffinityCheck as a dict, plus:
         substrate_provider — class name of the resolved client, or None
@@ -360,6 +374,8 @@ def resolve_affinity_status(
     agent_model = os.environ.get("MNEMOS_AGENT_MODEL", "").strip() or _load_env_key(
         "MNEMOS_AGENT_MODEL"
     )
+    if not agent_model and agent_model_hint:
+        agent_model = agent_model_hint.strip()
     policy = os.environ.get("MNEMOS_SUBSTRATE_AFFINITY", "").strip() or _load_env_key(
         "MNEMOS_SUBSTRATE_AFFINITY"
     )

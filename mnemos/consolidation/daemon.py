@@ -56,6 +56,7 @@ class ConsolidationDaemon:
         config: dict[str, Any] | None = None,
         llm_client: Any | None = None,
         embedding_index: Any | None = None,
+        agent_model_hint: str | None = None,
     ) -> None:
         """Initialize the consolidation daemon.
 
@@ -69,11 +70,15 @@ class ConsolidationDaemon:
                 is a no-op.
             embedding_index: Embedding index for semantic search in connection
                 discovery. If None, uses FTS5 only.
+            agent_model_hint: The agent's self-declared model (e.g. from
+                mnemos_introduce), used for substrate provenance when
+                MNEMOS_AGENT_MODEL is unset.
         """
         self._store = store
         self._config = config or {}
         self._llm_client = llm_client
         self._embedding_index = embedding_index
+        self._agent_model_hint = agent_model_hint
 
     def run_cycle(
         self,
@@ -218,7 +223,9 @@ class ConsolidationDaemon:
             from ..llm import resolve_affinity_status
 
             status = resolve_affinity_status(
-                self._llm_client, resolve_if_missing=False
+                self._llm_client,
+                resolve_if_missing=False,
+                agent_model_hint=self._agent_model_hint,
             )
             return {
                 "model": status["substrate_model"] or getattr(self._llm_client, "_model", None),

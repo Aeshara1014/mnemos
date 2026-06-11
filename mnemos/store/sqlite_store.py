@@ -1178,6 +1178,25 @@ class EngramStore:
             return None
         return AgentIdentity.from_dict(dict(row))
 
+    # ── Meta ──
+
+    def get_meta(self, key: str, default: str | None = None) -> str | None:
+        """Read a meta value. Returns default when the key is absent."""
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT value FROM meta WHERE key = ?", (key,)
+        ).fetchone()
+        return row[0] if row else default
+
+    def set_meta(self, key: str, value: str) -> None:
+        """Upsert a meta value."""
+        conn = self._get_conn()
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+        conn.commit()
+
     # ── Consolidation Log ──
 
     def log_consolidation(

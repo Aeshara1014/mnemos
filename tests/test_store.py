@@ -4,6 +4,7 @@ import pytest
 from mnemos.core.engram import Connection, Engram
 from mnemos.core.belief import Belief
 from mnemos.core.types import ConnectionRelation, EngramState
+from mnemos.store.sqlite_store import EngramStore
 
 
 class TestEngramStore:
@@ -97,3 +98,26 @@ class TestEngramStore:
 
         # Confirm it's gone
         assert store.get_engram(engram.id) is None
+
+    def test_meta_set_get_roundtrip(self, store):
+        """get_meta returns None/default when absent; set then get round-trips."""
+        assert store.get_meta("nonexistent") is None
+        assert store.get_meta("nonexistent", "fallback") == "fallback"
+
+        store.set_meta("watermark", "2026-06-11T00:00:00Z")
+        assert store.get_meta("watermark") == "2026-06-11T00:00:00Z"
+
+    def test_meta_overwrite_persists_across_reopen(self, tmp_db):
+        """set_meta upserts; the latest value survives a close and reopen."""
+        first = EngramStore(tmp_db)
+        first.set_meta("watermark", "first-value")
+        first.set_meta("watermark", "second-value")
+        first.close()
+
+        reopened = EngramStore(tmp_db)
+        try:
+            assert reopened.get_meta("watermark") == "second-value"
+            # The schema_version bookkeeping row is untouched by the meta API.
+            assert reopened.get_meta("schema_version") is not None
+        finally:
+            reopened.close()
