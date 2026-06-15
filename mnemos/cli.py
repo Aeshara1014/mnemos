@@ -14,6 +14,7 @@ Commands:
     mnemos identity diff         Diff graph-derived identity against SOUL.md
     mnemos identity accept       Accept a divergence, open a new epoch
     mnemos remember CONTENT      Capture durable continuity from the CLI
+    mnemos hermes install        Install Mnemos for Hermes Agent
 """
 
 from __future__ import annotations
@@ -133,6 +134,30 @@ def main(argv: list[str] | None = None) -> int:
     p_doctor.add_argument("--person-id", default=None, help="Person/user scope")
     p_doctor.add_argument("--project-scope", default=None, help="Project/workspace scope")
 
+    # ── hermes ──
+    p_hermes = sub.add_parser("hermes", help="Hermes Agent identity-continuity integration")
+    hermes_sub = p_hermes.add_subparsers(dest="hermes_command")
+    p_hermes_install = hermes_sub.add_parser("install", help="Install Mnemos for Hermes")
+    p_hermes_install.add_argument("--hermes-home", default=None, help="Hermes home directory")
+    p_hermes_install.add_argument("--db-path", default=None, help="Mnemos SQLite database path")
+    p_hermes_install.add_argument("--agent-id", default=None, help="Fixed Mnemos agent scope")
+    p_hermes_install.add_argument("--person-id", default=None, help="Fixed person/user scope")
+    p_hermes_install.add_argument("--project-scope", default=None, help="Fixed project scope")
+    p_hermes_install.add_argument(
+        "--mode",
+        choices=("provider", "sidecar"),
+        default="provider",
+        help="Provider Mode uses memory.provider=mnemos; Sidecar Mode preserves the existing provider and adds MCP",
+    )
+    p_hermes_install.add_argument("--activate", action="store_true", help="Set memory.provider to mnemos in Provider Mode")
+    p_hermes_install.add_argument("--with-mcp", action="store_true", help="Also add Mnemos to Hermes mcp_servers")
+    p_hermes_install.add_argument("--mcp-name", default="mnemos", help="Hermes MCP server name")
+    p_hermes_install.add_argument("--force", action="store_true", help="Replace an existing shim")
+    p_hermes_install.add_argument("--dry-run", action="store_true", help="Show what would be written")
+    p_hermes_doctor = hermes_sub.add_parser("doctor", help="Check Hermes Mnemos setup")
+    p_hermes_doctor.add_argument("--hermes-home", default=None, help="Hermes home directory")
+    hermes_sub.add_parser("shim", help="Print the Hermes provider shim")
+
     # ── identity ──
     p_identity = sub.add_parser("identity", help="Computed vs declared identity")
     identity_sub = p_identity.add_subparsers(dest="identity_command")
@@ -216,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
         "bridge": _cmd_bridge,
         "remember": _cmd_remember,
         "doctor": _cmd_doctor,
+        "hermes": _cmd_hermes,
         "identity": _cmd_identity,
         "mcp": _cmd_mcp,
     }
@@ -653,6 +679,44 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         print(f"Claude Desktop config path: {_claude_desktop_config_path()}")
         print("Re-run with --write to merge this server into that file.")
     return 0
+
+
+def _cmd_hermes(args: argparse.Namespace) -> int:
+    """Hermes integration helper commands."""
+    from .integrations.hermes.installer import (
+        build_diagnostics,
+        format_diagnostics,
+        install_hermes_plugin,
+        render_plugin_shim,
+    )
+
+    if args.hermes_command == "install":
+        result = install_hermes_plugin(
+            hermes_home=args.hermes_home,
+            db_path=args.db_path,
+            agent_id=args.agent_id,
+            person_id=args.person_id,
+            project_scope=args.project_scope,
+            mode=args.mode,
+            configure_mcp=True if args.with_mcp else None,
+            mcp_server_name=args.mcp_name,
+            activate=args.activate,
+            force=args.force,
+            dry_run=args.dry_run,
+        )
+        print(result.summary())
+        return 0 if not result.warnings else 1
+
+    if args.hermes_command == "doctor":
+        print(format_diagnostics(build_diagnostics(args.hermes_home)))
+        return 0
+
+    if args.hermes_command == "shim":
+        print(render_plugin_shim())
+        return 0
+
+    print("Usage: mnemos hermes {install|doctor|shim}", file=sys.stderr)
+    return 1
 
 
 def _print_affinity_status() -> None:
