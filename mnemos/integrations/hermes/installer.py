@@ -143,6 +143,79 @@ class HermesInstallResult:
         return "\n".join(lines)
 
 
+@dataclass
+class HermesQuickstartResult:
+    hermes_home: Path
+    mode: str
+    agent_safe: bool = False
+    install_result: HermesInstallResult | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+    preserved_provider: str = ""
+    restart_likely_needed: bool = True
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        if self.install_result is None:
+            return False
+        if self.warnings:
+            return False
+        if self.agent_safe and not self.install_result.mcp_configured:
+            return False
+        return True
+
+    def summary(self) -> str:
+        mode_label = "Provider Mode" if self.mode == PROVIDER_MODE else "Sidecar Mode"
+        diagnostics = self.diagnostics or {}
+        install = self.install_result
+        active_provider = str(diagnostics.get("active_memory_provider") or "")
+        mcp_configured = bool(diagnostics.get("mcp_server_configured"))
+        provider_shim_ready = bool(diagnostics.get("provider_shim_ready"))
+        command = str(diagnostics.get("mnemos_command") or "mnemos")
+        preserved = self.preserved_provider or "(not set)"
+        if install and install.mcp_configured:
+            mcp_status = "configured"
+        elif mcp_configured:
+            mcp_status = "present"
+        else:
+            mcp_status = "not configured"
+        lines = [
+            "Mnemos Hermes quickstart",
+            f"Mode: {mode_label}",
+            f"Agent-safe: {'yes' if self.agent_safe else 'no'}",
+            f"HERMES_HOME: {self.hermes_home}",
+            "Doctor summary:",
+        ]
+        if self.mode == SIDECAR_MODE:
+            lines.append(f"Preserved memory.provider: {preserved}")
+        else:
+            lines.append(f"memory.provider: {active_provider or '(not set)'}")
+        lines.extend([
+            f"MCP sidecar: {mcp_status}",
+            f"Provider shim: {'installed' if provider_shim_ready else 'not installed'}",
+            f"Command: {command}",
+        ])
+        if install and install.files_written:
+            lines.append("Changed files: " + ", ".join(str(path) for path in install.files_written))
+        if install and install.mcp_config_path:
+            mcp_status = "updated" if install.mcp_configured else "not changed"
+            lines.append(f"Hermes config: {install.mcp_config_path} ({mcp_status})")
+        if self.agent_safe:
+            lines.append("Preserved: SOUL.md, MEMORY.md, USER.md, AGENTS.md, and memory.provider")
+        if self.restart_likely_needed:
+            lines.append("Restart: yes; restart Hermes to load new provider or MCP config.")
+        else:
+            lines.append("Restart: not likely; no Hermes config change was made.")
+        if self.warnings:
+            lines.append("Warnings:")
+            lines.extend(f"- {warning}" for warning in self.warnings)
+        elif self.mode == SIDECAR_MODE:
+            lines.append("Ready: Mnemos is available through Hermes MCP/tools alongside the current memory provider.")
+        else:
+            lines.append("Ready: Mnemos is the active Hermes external memory provider.")
+        return "\n".join(lines)
+
+
 def install_hermes_plugin(
     *,
     hermes_home: str | Path | None = None,
@@ -156,6 +229,7 @@ def install_hermes_plugin(
     activate: bool = False,
     force: bool = False,
     dry_run: bool = False,
+    agent_safe: bool = False,
 ) -> HermesInstallResult:
     """Install the Hermes user memory-provider shim under ``$HERMES_HOME``."""
 
@@ -220,6 +294,7 @@ def install_hermes_plugin(
             person_id=person_id,
             project_scope=project_scope,
             dry_run=dry_run,
+            replace_existing_server=not agent_safe,
         )
         result.mcp_configured = configured
         result.mcp_config_path = config_path
@@ -241,6 +316,69 @@ def install_hermes_plugin(
         result.activated = result.active_provider == PLUGIN_NAME
 
     return result
+
+
+def quickstart_hermes(
+    *,
+    hermes_home: str | Path | None = None,
+    db_path: str | None = None,
+    agent_id: str | None = None,
+    person_id: str | None = None,
+    project_scope: str | None = None,
+    provider: bool = False,
+    activate_provider: bool = False,
+    agent_safe: bool = False,
+    mcp_server_name: str = DEFAULT_MCP_SERVER_NAME,
+    dry_run: bool = False,
+) -> HermesQuickstartResult:
+    """Install Mnemos for Hermes with safe defaults and an immediate doctor pass."""
+
+    home = Path(hermes_home).expanduser() if hermes_home else default_hermes_home()
+    before = build_diagnostics(home)
+    preserved_provider = str(before.get("active_memory_provider") or "")
+    wants_provider = bool(provider or activate_provider)
+    mode = SIDECAR_MODE if agent_safe or not wants_provider else PROVIDER_MODE
+    activate = mode == PROVIDER_MODE
+    warnings: list[str] = []
+    if agent_safe and wants_provider:
+        warnings.append("Agent-safe quickstart ignores provider activation flags and keeps memory.provider unchanged.")
+
+    install = install_hermes_plugin(
+        hermes_home=home,
+        db_path=db_path,
+        agent_id=agent_id,
+        person_id=person_id,
+        project_scope=project_scope,
+        mode=mode,
+        configure_mcp=mode == SIDECAR_MODE,
+        mcp_server_name=mcp_server_name,
+        activate=activate,
+        dry_run=dry_run,
+        agent_safe=agent_safe,
+    )
+    warnings.extend(install.warnings)
+    after = build_diagnostics(home)
+    if agent_safe:
+        after_provider = str(after.get("active_memory_provider") or "")
+        if after_provider != preserved_provider:
+            warnings.append(
+                f"Agent-safe quickstart expected to preserve memory.provider as {preserved_provider or '(not set)'}, "
+                f"but found {after_provider or '(not set)'}."
+            )
+        if not install.mcp_configured:
+            warnings.append("Agent-safe quickstart could not safely configure the Mnemos MCP sidecar.")
+
+    restart_likely = bool(install.files_written or install.mcp_configured or install.activated)
+    return HermesQuickstartResult(
+        hermes_home=home,
+        mode=mode,
+        agent_safe=agent_safe,
+        install_result=install,
+        diagnostics=after,
+        preserved_provider=preserved_provider,
+        restart_likely_needed=restart_likely,
+        warnings=warnings,
+    )
 
 
 def build_diagnostics(hermes_home: str | Path | None = None) -> dict[str, Any]:
@@ -291,6 +429,7 @@ def build_diagnostics(hermes_home: str | Path | None = None) -> dict[str, Any]:
         "db_path": str(db_path),
         "db_exists": db_path.exists(),
         "ready": active == PLUGIN_NAME or mcp_configured,
+        "restart_likely_needed": active == PLUGIN_NAME or mcp_configured or provider_shim_ready,
     }
 
 
@@ -308,6 +447,7 @@ def format_diagnostics(payload: dict[str, Any]) -> str:
         f"Config:      {'yes' if payload['mnemos_config_exists'] else 'no'}",
         f"Database:    {payload['db_path']} ({'exists' if payload['db_exists'] else 'not created yet'})",
         f"Command:     {payload['mnemos_command']}",
+        f"Restart:     {'likely after install/config changes' if payload['restart_likely_needed'] else 'not likely'}",
     ]
     if payload["provider_mode_active"]:
         lines.append("Provider Mode: active; Hermes built-in memory remains active alongside Mnemos.")
@@ -344,6 +484,7 @@ def _configure_mcp_server(
     person_id: str | None = None,
     project_scope: str | None = None,
     dry_run: bool = False,
+    replace_existing_server: bool = True,
 ) -> tuple[bool, str | None, Path]:
     config_path = home / "config.yaml"
     if dry_run:
@@ -371,12 +512,36 @@ def _configure_mcp_server(
 
     home.mkdir(parents=True, exist_ok=True)
     try:
-        existing = yaml.safe_load(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
-        if not isinstance(existing, dict):
+        if config_path.exists():
+            raw_existing = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if raw_existing is None:
+                existing = {}
+            elif isinstance(raw_existing, dict):
+                existing = raw_existing
+            else:
+                return (
+                    False,
+                    f"Existing {config_path} is not a YAML mapping, so it was not modified for MCP sidecar mode.",
+                    config_path,
+                )
+        else:
             existing = {}
         mcp_servers = existing.get("mcp_servers")
-        if not isinstance(mcp_servers, dict):
+        if mcp_servers is None:
             mcp_servers = {}
+        elif not isinstance(mcp_servers, dict):
+            return (
+                False,
+                f"Existing mcp_servers in {config_path} is not a YAML mapping, so it was not modified.",
+                config_path,
+            )
+        existing_server = mcp_servers.get(server_name)
+        if existing_server and existing_server != server and not replace_existing_server:
+            return (
+                False,
+                f"Existing mcp_servers.{server_name} differs; agent-safe mode left it unchanged.",
+                config_path,
+            )
         mcp_servers[server_name] = server
         existing["mcp_servers"] = mcp_servers
         config_path.write_text(yaml.safe_dump(existing, sort_keys=False), encoding="utf-8")

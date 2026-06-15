@@ -15,6 +15,7 @@ Commands:
     mnemos identity accept       Accept a divergence, open a new epoch
     mnemos remember CONTENT      Capture durable continuity from the CLI
     mnemos hermes install        Install Mnemos for Hermes Agent
+    mnemos hermes quickstart     Safely install Mnemos for Hermes Agent
 """
 
 from __future__ import annotations
@@ -154,6 +155,32 @@ def main(argv: list[str] | None = None) -> int:
     p_hermes_install.add_argument("--mcp-name", default="mnemos", help="Hermes MCP server name")
     p_hermes_install.add_argument("--force", action="store_true", help="Replace an existing shim")
     p_hermes_install.add_argument("--dry-run", action="store_true", help="Show what would be written")
+    p_hermes_quickstart = hermes_sub.add_parser(
+        "quickstart",
+        help="Safely install Mnemos for Hermes and run doctor",
+    )
+    p_hermes_quickstart.add_argument("--hermes-home", default=None, help="Hermes home directory")
+    p_hermes_quickstart.add_argument("--db-path", default=None, help="Mnemos SQLite database path")
+    p_hermes_quickstart.add_argument("--agent-id", default=None, help="Fixed Mnemos agent scope")
+    p_hermes_quickstart.add_argument("--person-id", default=None, help="Fixed person/user scope")
+    p_hermes_quickstart.add_argument("--project-scope", default=None, help="Fixed project scope")
+    p_hermes_quickstart.add_argument(
+        "--agent-safe",
+        action="store_true",
+        help="Noninteractive Sidecar Mode only; never changes memory.provider",
+    )
+    p_hermes_quickstart.add_argument(
+        "--provider",
+        action="store_true",
+        help="Use Provider Mode and activate memory.provider=mnemos",
+    )
+    p_hermes_quickstart.add_argument(
+        "--activate-provider",
+        action="store_true",
+        help="Alias for --provider",
+    )
+    p_hermes_quickstart.add_argument("--mcp-name", default="mnemos", help="Hermes MCP server name")
+    p_hermes_quickstart.add_argument("--dry-run", action="store_true", help="Show what would be written")
     p_hermes_doctor = hermes_sub.add_parser("doctor", help="Check Hermes Mnemos setup")
     p_hermes_doctor.add_argument("--hermes-home", default=None, help="Hermes home directory")
     hermes_sub.add_parser("shim", help="Print the Hermes provider shim")
@@ -687,6 +714,7 @@ def _cmd_hermes(args: argparse.Namespace) -> int:
         build_diagnostics,
         format_diagnostics,
         install_hermes_plugin,
+        quickstart_hermes,
         render_plugin_shim,
     )
 
@@ -707,6 +735,22 @@ def _cmd_hermes(args: argparse.Namespace) -> int:
         print(result.summary())
         return 0 if not result.warnings else 1
 
+    if args.hermes_command == "quickstart":
+        result = quickstart_hermes(
+            hermes_home=args.hermes_home,
+            db_path=args.db_path,
+            agent_id=args.agent_id,
+            person_id=args.person_id,
+            project_scope=args.project_scope,
+            provider=args.provider,
+            activate_provider=args.activate_provider,
+            agent_safe=args.agent_safe,
+            mcp_server_name=args.mcp_name,
+            dry_run=args.dry_run,
+        )
+        print(result.summary())
+        return 0 if result.ok else 1
+
     if args.hermes_command == "doctor":
         print(format_diagnostics(build_diagnostics(args.hermes_home)))
         return 0
@@ -715,7 +759,7 @@ def _cmd_hermes(args: argparse.Namespace) -> int:
         print(render_plugin_shim())
         return 0
 
-    print("Usage: mnemos hermes {install|doctor|shim}", file=sys.stderr)
+    print("Usage: mnemos hermes {install|quickstart|doctor|shim}", file=sys.stderr)
     return 1
 
 

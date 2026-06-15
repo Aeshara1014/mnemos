@@ -15,6 +15,7 @@ from mnemos.integrations.hermes.installer import (
     build_diagnostics,
     install_hermes_plugin,
     provider_plugin_dirs,
+    quickstart_hermes,
 )
 
 
@@ -40,10 +41,10 @@ def _install_yaml_stub(monkeypatch):
             return json.loads(raw)
         except Exception:
             pass
-        if "provider: honcho" in raw:
-            return {"memory": {"provider": "honcho"}}
-        if "provider: mnemos" in raw:
-            return {"memory": {"provider": "mnemos"}}
+        for line in raw.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("provider:"):
+                return {"memory": {"provider": stripped.split(":", 1)[1].strip()}}
         if "description:" in raw:
             return {"description": "Local-first Mnemos identity-continuity provider for Hermes"}
         return {}
@@ -529,3 +530,125 @@ def test_cli_hermes_provider_smoke_activates_provider(tmp_path, capsys, monkeypa
     assert "Provider Mode active: yes" in out
     assert "Mode:        Provider Mode" in doctor
     assert "Provider:    mnemos" in doctor
+
+
+def test_quickstart_defaults_to_sidecar_with_existing_provider(tmp_path, monkeypatch):
+    _install_yaml_stub(monkeypatch)
+    (tmp_path / "config.yaml").write_text("memory:\n  provider: honcho\n", encoding="utf-8")
+
+    result = quickstart_hermes(hermes_home=tmp_path)
+    diagnostics = build_diagnostics(tmp_path)
+
+    assert result.ok is True
+    assert result.mode == "sidecar"
+    assert result.preserved_provider == "honcho"
+    assert diagnostics["active_memory_provider"] == "honcho"
+    assert diagnostics["mcp_server_configured"] is True
+    assert diagnostics["provider_shim_ready"] is False
+
+
+def test_quickstart_agent_safe_never_changes_memory_provider(tmp_path, monkeypatch):
+    _install_yaml_stub(monkeypatch)
+    (tmp_path / "config.yaml").write_text("memory:\n  provider: supermemory\n", encoding="utf-8")
+
+    result = quickstart_hermes(
+        hermes_home=tmp_path,
+        agent_safe=True,
+        agent_id="coder",
+        person_id="riley",
+        project_scope="mnemos",
+    )
+    diagnostics = build_diagnostics(tmp_path)
+
+    assert result.ok is True
+    assert result.mode == "sidecar"
+    assert diagnostics["active_memory_provider"] == "supermemory"
+    assert diagnostics["mcp_server_configured"] is True
+    assert diagnostics["mcp_server"]["args"] == [
+        "serve",
+        "--mode",
+        "simple",
+        "--agent-id",
+        "coder",
+        "--person-id",
+        "riley",
+        "--project-scope",
+        "mnemos",
+    ]
+    assert "Preserved: SOUL.md, MEMORY.md, USER.md, AGENTS.md, and memory.provider" in result.summary()
+
+
+def test_quickstart_provider_mode_requires_explicit_flag(tmp_path, monkeypatch):
+    _install_yaml_stub(monkeypatch)
+
+    default_result = quickstart_hermes(hermes_home=tmp_path)
+    default_diagnostics = build_diagnostics(tmp_path)
+    provider_result = quickstart_hermes(hermes_home=tmp_path, provider=True)
+    provider_diagnostics = build_diagnostics(tmp_path)
+
+    assert default_result.mode == "sidecar"
+    assert default_diagnostics["active_memory_provider"] == ""
+    assert default_diagnostics["mcp_server_configured"] is True
+    assert provider_result.mode == "provider"
+    assert provider_result.ok is True
+    assert provider_diagnostics["active_memory_provider"] == "mnemos"
+    assert provider_diagnostics["provider_mode_active"] is True
+
+
+def test_quickstart_agent_safe_refuses_risky_mcp_replacement(tmp_path, monkeypatch):
+    _install_yaml_stub(monkeypatch)
+    existing = {
+        "memory": {"provider": "honcho"},
+        "mcp_servers": {"mnemos": {"command": "custom-mnemos", "args": ["serve"]}},
+    }
+    (tmp_path / "config.yaml").write_text(json.dumps(existing), encoding="utf-8")
+
+    result = quickstart_hermes(hermes_home=tmp_path, agent_safe=True)
+    config = json.loads((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+
+    assert result.ok is False
+    assert config["memory"]["provider"] == "honcho"
+    assert config["mcp_servers"]["mnemos"]["command"] == "custom-mnemos"
+    assert any("agent-safe mode left it unchanged" in warning for warning in result.warnings)
+
+
+def test_cli_hermes_quickstart_agent_safe_smoke(tmp_path, capsys, monkeypatch):
+    _install_yaml_stub(monkeypatch)
+    from mnemos.cli import main
+
+    code = main(["hermes", "quickstart", "--hermes-home", str(tmp_path), "--agent-safe"])
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "Mnemos Hermes quickstart" in out
+    assert "Mode: Sidecar Mode" in out
+    assert "Agent-safe: yes" in out
+    assert "Doctor summary:" in out
+    assert "MCP sidecar: configured" in out
+    assert "Restart: yes" in out
+
+
+def test_cli_hermes_quickstart_provider_smoke(tmp_path, capsys, monkeypatch):
+    _install_yaml_stub(monkeypatch)
+    from mnemos.cli import main
+
+    code = main(["hermes", "quickstart", "--hermes-home", str(tmp_path), "--provider"])
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "Mode: Provider Mode" in out
+    assert "memory.provider: mnemos" in out
+    assert "Provider shim: installed" in out
+
+
+def test_docs_include_safe_hermes_agent_prompt():
+    root = Path(__file__).resolve().parents[1]
+    install_doc = (root / "HERMES_INSTALL.md").read_text(encoding="utf-8")
+    integration_doc = (root / "docs" / "hermes-integration.md").read_text(encoding="utf-8")
+
+    assert "Install Mnemos for yourself" in install_doc
+    assert "quickstart --agent-safe" in install_doc
+    assert "Do not overwrite SOUL.md, MEMORY.md, USER.md, AGENTS.md" in install_doc
+    assert "memory.provider=mnemos" in install_doc or "provider: mnemos" in install_doc
+    assert "Sidecar Mode is the default safe path" in install_doc
+    assert "quickstart --agent-safe" in integration_doc

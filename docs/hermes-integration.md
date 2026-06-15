@@ -25,6 +25,22 @@ Reference Hermes docs:
 - https://hermes-agent.nousresearch.com/docs/user-guide/features/context-files
 - https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp
 
+## Fastest Safe Install
+
+For a Hermes agent installing Mnemos for itself, use quickstart in agent-safe Sidecar Mode:
+
+```bash
+mnemos hermes quickstart --agent-safe
+```
+
+Agent-safe quickstart is noninteractive, preserves any existing `memory.provider`, installs Mnemos only as an MCP sidecar, runs a doctor check, and prints exactly what changed and what was preserved. It never overwrites `SOUL.md`, `MEMORY.md`, `USER.md`, `AGENTS.md`, or project context files.
+
+If a user wants to hand the repo URL to a Hermes agent, use the prompt in [`../HERMES_INSTALL.md`](../HERMES_INSTALL.md). Provider Mode must be explicit:
+
+```bash
+mnemos hermes quickstart --provider
+```
+
 ## Provider Mode
 
 Use Provider Mode when Mnemos should be the active external provider for automatic Hermes identity continuity:
@@ -110,6 +126,14 @@ mnemos hermes doctor
 ```
 
 Doctor reports whether Mnemos is in Provider Mode, Sidecar Mode, provider-shim-installed-but-inactive mode, or not configured. It also reports the active `memory.provider`, whether an MCP sidecar entry exists, the Mnemos config path, and the local database path.
+
+Quickstart combines install and diagnostics:
+
+```bash
+mnemos hermes quickstart --agent-safe
+```
+
+It also reports the `mnemos` command path Hermes will use and whether a Hermes restart is likely needed after install.
 
 ## Configuration
 

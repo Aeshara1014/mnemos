@@ -2,9 +2,11 @@
 
 from .installer import (
     HermesInstallResult,
+    HermesQuickstartResult,
     build_diagnostics,
     install_hermes_plugin,
     provider_plugin_dirs,
+    quickstart_hermes,
     render_plugin_shim,
 )
 from .provider import MnemosMemoryProviderCore, build_memory_provider_class
@@ -13,6 +15,7 @@ from .scope import HermesMnemosConfig, HermesScope, derive_hermes_scope
 __all__ = [
     "HermesInstallResult",
     "HermesMnemosConfig",
+    "HermesQuickstartResult",
     "HermesScope",
     "MnemosMemoryProviderCore",
     "build_diagnostics",
@@ -20,5 +23,6 @@ __all__ = [
     "derive_hermes_scope",
     "install_hermes_plugin",
     "provider_plugin_dirs",
+    "quickstart_hermes",
     "render_plugin_shim",
 ]
