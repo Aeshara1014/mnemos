@@ -13,8 +13,10 @@ Do not change memory.provider in agent-safe mode.
 Preserve any existing Hermes memory provider such as Honcho, Supermemory, Mem0, or Hindsight.
 
 Run the safest install and verification flow:
-  uvx --from git+https://github.com/Riley-Coyote/mnemos.git mnemos hermes quickstart --agent-safe
-  mnemos hermes doctor
+  git clone https://github.com/Riley-Coyote/mnemos.git
+  cd mnemos
+  uv run --extra mcp mnemos hermes quickstart --agent-safe
+  uv run --extra mcp mnemos hermes doctor
 
 After installing, tell me exactly what changed, what was preserved, whether MCP sidecar mode is configured, and whether I need to restart Hermes.
 ```
@@ -22,11 +24,12 @@ After installing, tell me exactly what changed, what was preserved, whether MCP 
 If the repository is already checked out locally, run this from the repo instead:
 
 ```bash
-uv run mnemos hermes quickstart --agent-safe
-uv run mnemos hermes doctor
+uv run --extra mcp mnemos hermes quickstart --agent-safe
+uv run --extra mcp mnemos hermes doctor
 ```
 
 Hermes may need a restart after the install so it can load the new MCP or provider configuration.
+Use a persistent checkout or package install so the `mnemos` command path written into Hermes config still exists after restart.
 
 ## Sidecar Mode
 
