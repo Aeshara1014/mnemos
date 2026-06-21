@@ -158,6 +158,17 @@ class Substrate:
             except Exception as e:
                 log.error(f"Handler {handler.__name__} failed on {event}: {e}", exc_info=True)
 
+        # ── Phase 6.5: Introspection self-audit (opt-in, off by default) ──
+        if self.config.introspection_enabled:
+            try:
+                from .introspection_pass import run_introspection_pass
+                summary["introspection"] = run_introspection_pass(
+                    self.config, self.store, self.llm_client
+                )
+            except Exception as e:
+                log.error(f"Introspection pass failed: {e}", exc_info=True)
+                summary["introspection_error"] = str(e)
+
         # ── Phase 7: Log tick summary ──
         tick_end = datetime.now(timezone.utc)
         summary["tick_duration_seconds"] = (tick_end - tick_start).total_seconds()

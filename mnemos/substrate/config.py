@@ -43,6 +43,12 @@ class SubstrateConfig:
     max_engrams_per_tick: int = 3      # Max new engrams a tick can produce (prevents runaway)
     skip_surprise_on_handler_output: bool = True  # All handler outputs skip surprise detection
 
+    # ── Introspection (opt-in self-audit of recent outputs) ──
+    introspection_enabled: bool = False     # Audit recent responses for performed-vs-genuine markers
+    introspection_window_hours: int = 24    # Look-back window for recent responses
+    introspection_max_per_tick: int = 5     # Max responses audited per tick
+    introspection_min_tokens: int = 50      # Skip responses shorter than this (in words)
+
     # ── Logging ──
     log_dir: str = "~/.mnemos/logs/"
     verbose: bool = True
@@ -76,4 +82,6 @@ class SubstrateConfig:
             kwargs["db_path"] = v
         if v := os.environ.get("MNEMOS_LOG_DIR"):
             kwargs["log_dir"] = v
+        if os.environ.get("MNEMOS_INTROSPECTION", "").strip().lower() in ("1", "true", "yes", "on"):
+            kwargs["introspection_enabled"] = True
         return cls(**kwargs)

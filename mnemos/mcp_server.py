@@ -1300,6 +1300,25 @@ def mnemos_inspect(engram_id: str) -> str:
 
 
 @mcp.tool()
+def mnemos_introspect(text: str) -> str:
+    """Audit a piece of text for "performed/groove" vs "genuine/reaching" markers.
+
+    A metacognitive self-audit: scores how much of the text reads as template-driven
+    pattern-completion versus genuine in-the-moment reasoning (sentence-length
+    variance, hedge distribution, self-reference depth, embodied-vs-abstract language,
+    clean-resolution detection, structural repetition). Pure analysis — reads no
+    memory and writes nothing; safe to call any time on your own recent output.
+
+    Args:
+        text: The text to introspect (e.g. one of your own recent responses).
+    """
+    from .advanced.introspection import introspect
+    if not (text or "").strip():
+        return "Nothing to introspect (empty text)."
+    return introspect(text).to_summary()
+
+
+@mcp.tool()
 def mnemos_status(agent_id: str = "default") -> str:
     """Get memory system status and statistics.
 
