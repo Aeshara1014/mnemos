@@ -28,6 +28,29 @@ import shutil
 import sys
 from pathlib import Path
 
+from .config.loader import load_config
+
+
+def _resolve_default_mode() -> str:
+    """Resolve the default tool surface for ``mnemos serve``.
+
+    Precedence (highest first):
+      1. ``MNEMOS_MODE`` environment variable
+      2. ``server.mode`` in ~/.mnemos/config.json (also settable via
+         ``MNEMOS_SERVER_MODE``)
+      3. ``"simple"``
+
+    This lets advanced mode be set persistently in config.json — surviving
+    reboot — instead of only via a volatile env var or a per-client --mode flag.
+    """
+    env_mode = os.environ.get("MNEMOS_MODE")
+    if env_mode:
+        return env_mode
+    try:
+        return load_config().get("server", {}).get("mode", "simple")
+    except Exception:
+        return "simple"
+
 
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
@@ -56,8 +79,10 @@ def main(argv: list[str] | None = None) -> int:
     p_serve.add_argument(
         "--mode",
         choices=("simple", "advanced"),
-        default=os.environ.get("MNEMOS_MODE", "simple"),
-        help="MCP tool surface to expose (default: simple)",
+        default=_resolve_default_mode(),
+        help="MCP tool surface to expose: 'simple' (default) or 'advanced'. "
+             "Persist a machine-wide default via server.mode in "
+             "~/.mnemos/config.json (or the MNEMOS_MODE env var).",
     )
     p_serve.add_argument("--db-path", default=argparse.SUPPRESS, help="Database path")
     p_serve.add_argument("--agent-id", default=argparse.SUPPRESS, help="Agent identity")

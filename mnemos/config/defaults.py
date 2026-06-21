@@ -5,6 +5,7 @@ All configuration keys with their default values. These can be overridden
 by a JSON config file or environment variables via the loader.
 
 Configuration is organized by module:
+- server: MCP server settings (tool-surface mode)
 - store: database and storage settings
 - encoding: encoding pipeline parameters
 - retrieval: retrieval scoring weights and limits
@@ -15,6 +16,15 @@ Configuration is organized by module:
 """
 
 DEFAULT_CONFIG: dict = {
+    # ── Server ──
+    # MCP tool surface exposed by `mnemos serve`. "simple" is the zero-setup
+    # default (a small curated toolset); "advanced" exposes the full surface.
+    # Set "advanced" here to persist it machine-wide (survives reboot) instead
+    # of relying on a per-client --mode flag or a volatile MNEMOS_MODE env var.
+    "server": {
+        "mode": "simple",
+    },
+
     # ── Store ──
     "store": {
         "db_path": "~/.mnemos/memory.db",
