@@ -137,17 +137,30 @@ class SessionIndexer:
                 Path.home() / ".openclaw" / "sessions",
             ]
 
-        # Projects
+        # Projects — durable fallback from ~/.mnemos/config.json's "indexer" block,
+        # placed BELOW env so a live MNEMOS_* value is never overridden by a stale
+        # file. Only consulted when no explicit config dict was passed. known and
+        # active read separate keys so per-agent active is never coerced to known.
+        file_cfg: dict = {}
+        if config is None:
+            from ..config.loader import load_config  # mnemos.config.loader
+            try:
+                file_cfg = load_config().get("indexer", {}) or {}
+            except Exception:        # malformed/missing config.json -> ignore
+                file_cfg = {}
+
         self.known_projects = (
             known_projects
             or cfg.get("known_projects")
             or _env_list("MNEMOS_KNOWN_PROJECTS")
+            or file_cfg.get("known_projects")
             or []
         )
         self.active_projects = (
             active_projects
             or cfg.get("active_projects")
             or _env_list("MNEMOS_ACTIVE_PROJECTS")
+            or file_cfg.get("active_projects")
             or []
         )
 
