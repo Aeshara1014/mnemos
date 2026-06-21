@@ -43,3 +43,6 @@ htmlcov/
 
 # Local archive — not pushed to GitHub
 archive/
+
+# local-only health-harness baselines (per-deployment)
+scripts/health_baseline.local.json
