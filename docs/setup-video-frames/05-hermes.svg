@@ -1,0 +1,44 @@
+<svg width="100%" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hermes: Sidecar mode preserves the existing provider and adds mnemos via MCP; Provider mode makes mnemos the provider; never overwrites SOUL, MEMORY, USER, AGENTS files">
+  <defs>
+    <radialGradient id="lift5" cx="50%" cy="32%" r="68%">
+      <stop offset="0%" stop-color="#101218"/>
+      <stop offset="55%" stop-color="#0b0c10"/>
+      <stop offset="100%" stop-color="#08090c"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="#08090c"/>
+  <rect width="1280" height="720" fill="url(#lift5)"/>
+  <rect width="1280" height="1" fill="#ffffff" opacity="0.05"/>
+  <g opacity="0.7">
+    <g stroke="#ffffff" stroke-opacity="0.06" stroke-width="1">
+      <line x1="1180" y1="96" x2="1238" y2="150"/><line x1="1238" y1="150" x2="1245" y2="212"/><line x1="1180" y1="96" x2="1216" y2="180"/>
+    </g>
+    <g fill="#ffffff" fill-opacity="0.16">
+      <circle cx="1180" cy="96" r="2.4"/><circle cx="1238" cy="150" r="2.4"/><circle cx="1245" cy="212" r="2.4"/><circle cx="1216" cy="180" r="2.4"/>
+    </g>
+  </g>
+  <text x="96" y="74" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="3.5" fill="#ffffff" fill-opacity="0.5">HERMES · ONE memory.provider SLOT — TWO WAYS IN</text>
+  <text x="1184" y="74" text-anchor="end" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="3" fill="#ffffff" fill-opacity="0.28">04 — ACT 2</text>
+  <line x1="640" y1="150" x2="640" y2="520" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+  <text x="96" y="188" font-family="JetBrains Mono, ui-monospace, monospace" font-size="20" letter-spacing="2"><tspan fill="#ffffff" fill-opacity="0.9">SIDECAR</tspan><tspan fill="#ffffff" fill-opacity="0.4" font-size="15" letter-spacing="0"> · safe default</tspan></text>
+  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="21">
+    <text x="96" y="252"><tspan fill="#ffffff" fill-opacity="0.45">memory.provider: </tspan><tspan fill="#ffffff" fill-opacity="0.8">honcho</tspan></text>
+    <text x="96" y="286" font-size="14" fill="#ffffff" fill-opacity="0.38">↑ your existing provider — preserved</text>
+    <text x="96" y="344"><tspan fill="#ffffff" fill-opacity="0.45">mcp_servers: </tspan><tspan fill="#f5f6f7">+ mnemos</tspan></text>
+    <text x="96" y="378" font-size="14" fill="#ffffff" fill-opacity="0.38">↑ added beside it, via MCP</text>
+  </g>
+  <circle cx="218" cy="337" r="4" fill="#ffffff"/>
+  <text x="96" y="470" font-family="JetBrains Mono, ui-monospace, monospace" font-size="17"><tspan fill="#ffffff" fill-opacity="0.42">$ </tspan><tspan fill="#ffffff" fill-opacity="0.82">mnemos hermes quickstart --agent-safe</tspan></text>
+  <text x="704" y="188" font-family="JetBrains Mono, ui-monospace, monospace" font-size="20" letter-spacing="2"><tspan fill="#ffffff" fill-opacity="0.9">PROVIDER</tspan><tspan fill="#ffffff" fill-opacity="0.4" font-size="15" letter-spacing="0"> · mnemos takes the slot</tspan></text>
+  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="21">
+    <text x="704" y="252"><tspan fill="#ffffff" fill-opacity="0.45">memory.provider: </tspan><tspan fill="#f5f6f7">mnemos</tspan></text>
+    <text x="704" y="286" font-size="14" fill="#ffffff" fill-opacity="0.38">↑ mnemos becomes the provider</text>
+  </g>
+  <circle cx="828" cy="245" r="4" fill="#ffffff"/>
+  <text x="704" y="470" font-family="JetBrains Mono, ui-monospace, monospace" font-size="17"><tspan fill="#ffffff" fill-opacity="0.42">$ </tspan><tspan fill="#ffffff" fill-opacity="0.82">mnemos hermes quickstart --provider</tspan></text>
+  <rect x="96" y="548" width="1088" height="42" rx="8" fill="#ffffff" fill-opacity="0.02" stroke="#ffffff" stroke-opacity="0.07" stroke-width="1"/>
+  <text x="118" y="574" font-family="JetBrains Mono, ui-monospace, monospace" font-size="15"><tspan fill="#ffffff" fill-opacity="0.42">never overwrites  </tspan><tspan fill="#ffffff" fill-opacity="0.7">SOUL.md · MEMORY.md · USER.md · AGENTS.md · project files</tspan></text>
+  <line x1="96" y1="640" x2="1184" y2="640" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+  <text x="96" y="676" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="2.5" fill="#ffffff" fill-opacity="0.26">SIDECAR = SAFE DEFAULT</text>
+  <text x="1184" y="676" text-anchor="end" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="2.5" fill="#ffffff" fill-opacity="0.26">RESTART HERMES · DONE</text>
+</svg>

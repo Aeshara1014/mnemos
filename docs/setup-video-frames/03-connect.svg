@@ -1,0 +1,45 @@
+<svg width="100%" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Connect: mnemos mcp install claude --write adds the mnemos MCP server to the Claude Desktop config">
+  <defs>
+    <radialGradient id="lift3" cx="50%" cy="32%" r="68%">
+      <stop offset="0%" stop-color="#101218"/>
+      <stop offset="55%" stop-color="#0b0c10"/>
+      <stop offset="100%" stop-color="#08090c"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="#08090c"/>
+  <rect width="1280" height="720" fill="url(#lift3)"/>
+  <rect width="1280" height="1" fill="#ffffff" opacity="0.05"/>
+  <g opacity="0.7">
+    <g stroke="#ffffff" stroke-opacity="0.06" stroke-width="1">
+      <line x1="1180" y1="96" x2="1108" y2="140"/><line x1="1180" y1="96" x2="1238" y2="150"/>
+      <line x1="1108" y1="140" x2="1150" y2="210"/><line x1="1150" y1="210" x2="1086" y2="250"/>
+      <line x1="1150" y1="210" x2="1216" y2="250"/><line x1="1108" y1="140" x2="1066" y2="170"/>
+      <line x1="1238" y1="150" x2="1245" y2="212"/><line x1="1086" y1="250" x2="1130" y2="300"/>
+      <line x1="1216" y1="250" x2="1200" y2="300"/><line x1="1066" y1="170" x2="1040" y2="248"/>
+    </g>
+    <g fill="#ffffff" fill-opacity="0.16">
+      <circle cx="1180" cy="96" r="2.4"/><circle cx="1108" cy="140" r="2.4"/><circle cx="1238" cy="150" r="2.4"/>
+      <circle cx="1150" cy="210" r="2.4"/><circle cx="1086" cy="250" r="2.4"/><circle cx="1216" cy="250" r="2.4"/>
+      <circle cx="1066" cy="170" r="2.4"/><circle cx="1245" cy="212" r="2.4"/><circle cx="1130" cy="300" r="2.4"/>
+      <circle cx="1200" cy="300" r="2.4"/><circle cx="1040" cy="248" r="2.4"/>
+    </g>
+  </g>
+  <text x="96" y="74" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="3.5" fill="#ffffff" fill-opacity="0.5">CONNECT</text>
+  <text x="1184" y="74" text-anchor="end" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="3" fill="#ffffff" fill-opacity="0.28">02 — SETUP</text>
+  <g font-family="JetBrains Mono, ui-monospace, monospace">
+    <text x="96" y="206" font-size="24"><tspan fill="#ffffff" fill-opacity="0.42">$ </tspan><tspan fill="#ffffff" fill-opacity="0.95">mnemos mcp install claude --write</tspan></text>
+    <text x="96" y="248" font-size="19"><tspan fill="#ffffff" fill-opacity="0.4">→ </tspan><tspan fill="#ffffff" fill-opacity="0.55">wrote mnemos server to Claude Desktop config</tspan></text>
+  </g>
+  <rect x="96" y="288" width="720" height="150" rx="10" fill="#ffffff" fill-opacity="0.02" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1"/>
+  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="21">
+    <text x="124" y="332" fill="#ffffff" fill-opacity="0.5">"mcpServers": {</text>
+    <text x="156" y="372"><tspan fill="#f5f6f7">"mnemos"</tspan><tspan fill="#ffffff" fill-opacity="0.5">: { </tspan><tspan fill="#ffffff" fill-opacity="0.62">"command"</tspan><tspan fill="#ffffff" fill-opacity="0.5">: </tspan><tspan fill="#ffffff" fill-opacity="0.8">"mnemos"</tspan><tspan fill="#ffffff" fill-opacity="0.5">, </tspan><tspan fill="#ffffff" fill-opacity="0.62">"args"</tspan><tspan fill="#ffffff" fill-opacity="0.5">: </tspan><tspan fill="#ffffff" fill-opacity="0.8">["serve"]</tspan><tspan fill="#ffffff" fill-opacity="0.5"> }</tspan></text>
+    <text x="124" y="412" fill="#ffffff" fill-opacity="0.5">}</text>
+  </g>
+  <circle cx="140" cy="365" r="4" fill="#ffffff"/>
+  <text x="96" y="506" font-family="JetBrains Mono, ui-monospace, monospace" font-size="22"><tspan fill="#ffffff" fill-opacity="0.45">↻ </tspan><tspan fill="#ffffff" fill-opacity="0.82">restart Claude Desktop to connect.</tspan></text>
+  <text x="96" y="552" font-family="JetBrains Mono, ui-monospace, monospace" font-size="16" fill="#ffffff" fill-opacity="0.4">also: mnemos mcp install <tspan fill="#ffffff" fill-opacity="0.6">codex · cursor · generic</tspan> — same installer, prints what to paste.</text>
+  <line x1="96" y1="640" x2="1184" y2="640" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+  <text x="96" y="676" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="2.5" fill="#ffffff" fill-opacity="0.26">ONE COMMAND · ONE RESTART</text>
+  <text x="1184" y="676" text-anchor="end" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="2.5" fill="#ffffff" fill-opacity="0.26">NEXT · IT WORKS</text>
+</svg>

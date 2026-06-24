@@ -1,0 +1,51 @@
+<svg width="100%" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Install: clone, pip install with the mcp extra, mnemos doctor — ready, no external services">
+  <defs>
+    <radialGradient id="lift2" cx="50%" cy="32%" r="68%">
+      <stop offset="0%" stop-color="#101218"/>
+      <stop offset="55%" stop-color="#0b0c10"/>
+      <stop offset="100%" stop-color="#08090c"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="#08090c"/>
+  <rect width="1280" height="720" fill="url(#lift2)"/>
+  <rect width="1280" height="1" fill="#ffffff" opacity="0.05"/>
+  <g opacity="0.7">
+    <g stroke="#ffffff" stroke-opacity="0.06" stroke-width="1">
+      <line x1="1180" y1="96" x2="1108" y2="140"/><line x1="1180" y1="96" x2="1238" y2="150"/>
+      <line x1="1108" y1="140" x2="1150" y2="210"/><line x1="1150" y1="210" x2="1086" y2="250"/>
+      <line x1="1150" y1="210" x2="1216" y2="250"/><line x1="1108" y1="140" x2="1066" y2="170"/>
+      <line x1="1238" y1="150" x2="1245" y2="212"/><line x1="1086" y1="250" x2="1130" y2="300"/>
+      <line x1="1216" y1="250" x2="1200" y2="300"/><line x1="1066" y1="170" x2="1040" y2="248"/>
+    </g>
+    <g fill="#ffffff" fill-opacity="0.16">
+      <circle cx="1180" cy="96" r="2.4"/><circle cx="1108" cy="140" r="2.4"/><circle cx="1238" cy="150" r="2.4"/>
+      <circle cx="1150" cy="210" r="2.4"/><circle cx="1086" cy="250" r="2.4"/><circle cx="1216" cy="250" r="2.4"/>
+      <circle cx="1066" cy="170" r="2.4"/><circle cx="1245" cy="212" r="2.4"/><circle cx="1130" cy="300" r="2.4"/>
+      <circle cx="1200" cy="300" r="2.4"/><circle cx="1040" cy="248" r="2.4"/>
+    </g>
+  </g>
+  <text x="96" y="74" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="3.5" fill="#ffffff" fill-opacity="0.5">INSTALL</text>
+  <text x="1184" y="74" text-anchor="end" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="3" fill="#ffffff" fill-opacity="0.28">01 — SETUP</text>
+  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="24">
+    <text x="96" y="208"><tspan fill="#ffffff" fill-opacity="0.42">$ </tspan><tspan fill="#ffffff" fill-opacity="0.82">git clone https://github.com/Riley-Coyote/mnemos.git</tspan></text>
+    <text x="96" y="252"><tspan fill="#ffffff" fill-opacity="0.42">$ </tspan><tspan fill="#ffffff" fill-opacity="0.82">cd mnemos &amp;&amp; pip install -e ".[mcp]"</tspan></text>
+    <text x="96" y="296"><tspan fill="#ffffff" fill-opacity="0.42">$ </tspan><tspan fill="#ffffff" fill-opacity="0.95">mnemos doctor</tspan></text>
+  </g>
+  <line x1="96" y1="334" x2="760" y2="334" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="21">
+    <circle cx="104" cy="386" r="3" fill="#ffffff" fill-opacity="0.7"/>
+    <text x="126" y="392" fill="#ffffff" fill-opacity="0.6">local storage</text>
+    <text x="540" y="392" fill="#ffffff" fill-opacity="0.82">ready</text>
+    <circle cx="104" cy="428" r="3" fill="#ffffff" fill-opacity="0.7"/>
+    <text x="126" y="434" fill="#ffffff" fill-opacity="0.6">sqlite engine</text>
+    <text x="540" y="434" fill="#ffffff" fill-opacity="0.82">ok</text>
+    <circle cx="104" cy="470" r="3" fill="#ffffff" fill-opacity="0.7"/>
+    <text x="126" y="476" fill="#ffffff" fill-opacity="0.6">mcp surface</text>
+    <text x="540" y="476" fill="#ffffff" fill-opacity="0.82">7 tools</text>
+  </g>
+  <circle cx="102" cy="544" r="5" fill="#ffffff"/>
+  <text x="124" y="552" font-family="JetBrains Mono, ui-monospace, monospace" font-size="27"><tspan fill="#f5f6f7">ready</tspan><tspan fill="#ffffff" fill-opacity="0.4"> — local-first, no external services required.</tspan></text>
+  <line x1="96" y1="640" x2="1184" y2="640" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+  <text x="96" y="676" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="2.5" fill="#ffffff" fill-opacity="0.26">SQLITE · LOCAL-FIRST</text>
+  <text x="1184" y="676" text-anchor="end" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" letter-spacing="2.5" fill="#ffffff" fill-opacity="0.26">NEXT · CONNECT</text>
+</svg>
