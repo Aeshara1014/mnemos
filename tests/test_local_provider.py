@@ -1,74 +1,51 @@
 """Tests for OpenAICompatibleClient and its create_client resolution — the
 local-substrate door (LM Studio, Ollama, vLLM, mlx servers)."""
-import io
-import json
-
-import pytest
-
 from mnemos.llm import OpenAICompatibleClient, create_client, _create_client_unchecked
 
-
-class _FakeResponse(io.BytesIO):
-    """Minimal context-manager stand-in for urlopen's response."""
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-
-@pytest.fixture
-def captured(monkeypatch):
-    """Capture urllib requests; serve a canned OpenAI-shaped completion."""
-    calls = []
-
-    def fake_urlopen(req, timeout=None):
-        calls.append({
-            "url": req.full_url,
-            "body": json.loads(req.data.decode()),
-            "headers": dict(req.header_items()),
-            "timeout": timeout,
-        })
-        return _FakeResponse(json.dumps(
-            {"choices": [{"message": {"content": "a considered local reply"}}]}
-        ).encode())
-
-    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    return calls
+_OPENAI_SHAPE = {"choices": [{"message": {"content": "a considered local reply"}}]}
 
 
 class TestOpenAICompatibleClient:
-    def test_complete_posts_to_base_url(self, captured):
+    def test_complete_posts_to_base_url(self, capture_urlopen):
+        calls, respond_with = capture_urlopen
+        respond_with(_OPENAI_SHAPE)
         client = OpenAICompatibleClient(
             base_url="http://localhost:1234/v1/", model="qwen2.5-72b-instruct",
         )
+
         out = client.complete("hello there")
 
         assert out == "a considered local reply"
-        call = captured[0]
+        call = calls[0]
         assert call["url"] == "http://localhost:1234/v1/chat/completions"
         assert call["body"]["model"] == "qwen2.5-72b-instruct"
         assert call["body"]["messages"][0]["content"] == "hello there"
 
-    def test_structured_complete_carries_system_and_temperature(self, captured):
-        client = OpenAICompatibleClient(base_url="http://localhost:1234/v1")
-        client.structured_complete("be brief", "classify this", temperature=0.2)
+    def test_structured_complete_carries_system_and_temperature(self, capture_urlopen):
+        calls, respond_with = capture_urlopen
+        respond_with(_OPENAI_SHAPE)
+        OpenAICompatibleClient(base_url="http://localhost:1234/v1").structured_complete(
+            "be brief", "classify this", temperature=0.2,
+        )
 
-        body = captured[0]["body"]
+        body = calls[0]["body"]
         assert body["messages"][0] == {"role": "system", "content": "be brief"}
         assert body["temperature"] == 0.2
 
-    def test_no_auth_header_without_key(self, captured):
+    def test_no_auth_header_without_key(self, capture_urlopen):
+        calls, respond_with = capture_urlopen
+        respond_with(_OPENAI_SHAPE)
         OpenAICompatibleClient(base_url="http://localhost:1234/v1").complete("x")
-        headers = {k.lower() for k in captured[0]["headers"]}
+        headers = {k.lower() for k in calls[0]["headers"]}
         assert "authorization" not in headers
 
-    def test_auth_header_when_key_given(self, captured):
+    def test_auth_header_when_key_given(self, capture_urlopen):
+        calls, respond_with = capture_urlopen
+        respond_with(_OPENAI_SHAPE)
         OpenAICompatibleClient(
             base_url="http://localhost:1234/v1", api_key="secret",
         ).complete("x")
-        headers = {k.lower(): v for k, v in captured[0]["headers"].items()}
+        headers = {k.lower(): v for k, v in calls[0]["headers"].items()}
         assert headers.get("authorization") == "Bearer secret"
 
 
@@ -84,9 +61,17 @@ class TestCreateClientResolution:
         assert client._model == "qwen2.5-72b-instruct"
         assert client._base_url == "http://localhost:1234/v1"
 
-    def test_forced_local_without_base_url_falls_through(self, monkeypatch):
+    def test_forced_local_without_base_url_yields_no_substrate(self, monkeypatch):
         monkeypatch.setenv("MNEMOS_LLM_PROVIDER", "openai-compatible")
-        # conftest cleared every key/base_url — nothing to auto-detect.
+        assert _create_client_unchecked() is None
+
+    def test_local_intent_never_falls_back_to_ambient_cloud_key(self, monkeypatch):
+        """The DD-021 case: explicit LOCAL intent + missing base_url + an
+        ambient cloud key in the environment must yield NO substrate —
+        never a silent cloud client."""
+        monkeypatch.setenv("MNEMOS_LLM_PROVIDER", "local")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "ambient-cloud-key")
+
         assert _create_client_unchecked() is None
 
     def test_explicit_base_url_outranks_ambient_cloud_key(self, monkeypatch):
