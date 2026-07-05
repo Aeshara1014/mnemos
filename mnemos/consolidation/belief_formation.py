@@ -19,8 +19,10 @@ Design guards (this pass rewrites who the agent is — it earns its caution):
   every candidate must be grounded in several distinct memories, and formation
   is capped per cycle. Beliefs accrete slowly or they mean nothing.
 - Mechanically validated. The LLM proposes; code disposes. Supporting ids must
-  exist among the offered memories, meet a minimum count, and span a minimum
-  number of distinct days. Near-duplicates of existing beliefs are dropped.
+  exist among the offered memories, meet a minimum count, and span at least
+  two distinct days (default) — a conviction recurs across days, not within a
+  single sitting; even a re-emerging mind is given the time to sit with things
+  before they become belief. Near-duplicates of existing beliefs are dropped.
 - Born tentative, with a birth certificate. New beliefs start at the model's
   tentative floor and are immediately revised to the (capped) suggested
   confidence, so revision_history opens with a full account of the formation:
@@ -107,7 +109,7 @@ def run_belief_formation_pass(
     config = config or {}
     max_per_cycle = config.get("belief_formation_max_per_cycle", 2)
     min_supporting = config.get("belief_formation_min_supporting", 3)
-    min_distinct_days = config.get("belief_formation_min_distinct_days", 1)
+    min_distinct_days = config.get("belief_formation_min_distinct_days", 2)
     max_memories = config.get("belief_formation_max_memories", 60)
     max_candidates = config.get("belief_formation_max_candidates", 5)
     confidence_cap = config.get("belief_formation_confidence_cap", 0.6)

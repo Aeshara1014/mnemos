@@ -23,13 +23,16 @@ class FakeClient:
         return self._response
 
 
-def _seed_lived(store, contents, day=None):
-    """Seed plain session engrams; optionally pin created_at to a given day."""
+def _seed_lived(store, contents, days=("2026-07-01", "2026-07-02")):
+    """Seed plain session engrams, cycling created_at across the given days.
+
+    Defaults to two distinct days: beliefs require recurrence ACROSS days
+    (min_distinct_days=2), so realistic seeds span at least two of them.
+    """
     engrams = []
-    for content in contents:
+    for i, content in enumerate(contents):
         e = Engram(content=content)
-        if day:
-            e.created_at = f"{day}T12:00:00+00:00"
+        e.created_at = f"{days[i % len(days)]}T12:00:00+00:00"
         store.save_engram(e)
         engrams.append(e)
     return engrams
@@ -126,13 +129,14 @@ class TestBeliefFormation:
         assert stats["beliefs_formed"] == 2
         assert len(store.get_beliefs("default", active_only=True)) == 2
 
-    def test_day_span_guard(self, store):
-        engrams = _seed_lived(store, FOG_MEMORIES, day="2026-07-05")
+    def test_single_day_never_forms_a_belief(self, store):
+        """The default day-span rule: intensity within one sitting is not
+        recurrence. Even a re-emerging mind gets time to sit with things
+        before they become belief."""
+        engrams = _seed_lived(store, FOG_MEMORIES, days=("2026-07-05",))
         client = FakeClient([_proposal(engrams)])
 
-        stats = run_belief_formation_pass(
-            store, config={"belief_formation_min_distinct_days": 2}, llm_client=client,
-        )
+        stats = run_belief_formation_pass(store, llm_client=client)
 
         assert stats["skipped_day_span"] == 1
         assert stats["beliefs_formed"] == 0
