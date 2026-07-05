@@ -13,14 +13,6 @@ from mnemos.core.belief import Belief
 from mnemos.core.engram import Engram
 
 
-class FakeClient:
-    def complete(self, prompt):
-        return "A considered response."
-
-    def structured_complete(self, system, user, temperature=0.0, max_tokens=2000):
-        return "[]"
-
-
 def test_get_recent_engrams_returns_engram_objects(store):
     for content in ("first lived thing", "second lived thing"):
         store.save_engram(Engram(content=content))
@@ -36,11 +28,11 @@ def test_get_recent_engrams_returns_engram_objects(store):
     assert {e.content for e in recent} == {"first lived thing", "second lived thing"}
 
 
-def test_belief_review_survives_real_beliefs(store):
+def test_belief_review_survives_real_beliefs(store, stub_llm):
     """The exact crash from the first fully-local heartbeat (2026-07-05)."""
     store.save_belief(Belief(content="The west fog comes nightly.", confidence=0.5))
     store.save_engram(Engram(content="Clear sky tonight, and still the fog came."))
 
-    stats = run_belief_review(store, llm_client=FakeClient(), agent_id="default")
+    stats = run_belief_review(store, llm_client=stub_llm, agent_id="default")
 
     assert "memories_reviewed" in stats  # returned normally — no AttributeError

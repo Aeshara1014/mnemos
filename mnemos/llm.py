@@ -300,6 +300,27 @@ class MockClient:
         return "A considered response."
 
 
+def _http_post_json(url: str, payload: dict, headers: dict | None = None,
+                    timeout: int = 120) -> dict:
+    """POST a JSON payload with stdlib urllib and return the parsed response.
+
+    Shared plumbing for the local-server clients (OpenAICompatibleClient,
+    OllamaClient) — their only real differences are payload shape and which
+    response field carries the text.
+    """
+    import json
+    import urllib.request
+
+    all_headers = {"Content-Type": "application/json"}
+    if headers:
+        all_headers.update(headers)
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode(), headers=all_headers
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
 def _dotenv_disabled() -> bool:
     return os.environ.get("MNEMOS_DISABLE_DOTENV", "").strip().lower() in (
         "1", "true", "yes",
@@ -499,24 +520,32 @@ def _create_client_unchecked() -> "LLMClient | None":
                 model=model_override or "local-model",
                 api_key=_load_env_key("MNEMOS_LLM_API_KEY"),
             )
+        # Explicit LOCAL intent is never satisfied by a cloud key. Falling
+        # through to auto-detection here could silently hand the substrate
+        # to whatever ambient cloud key exists — the exact failure this
+        # provider exists to prevent. No base_url → no substrate, loudly.
         logger.warning(
             "MNEMOS_LLM_PROVIDER=%s but MNEMOS_LLM_BASE_URL is not set; "
-            "falling back to provider auto-detection.",
+            "no substrate (deep maintenance will run rule-based). Local "
+            "intent is never satisfied by cloud auto-detection.",
             forced,
         )
+        return None
 
     if forced == "ollama":
+        if not model_override:
+            logger.warning(
+                "MNEMOS_LLM_PROVIDER=ollama but MNEMOS_MODEL is not set; "
+                "no substrate (deep maintenance will run rule-based). Set "
+                "MNEMOS_MODEL to the Ollama tag that should dream here."
+            )
+            return None
         think = os.environ.get("MNEMOS_OLLAMA_THINK", "").strip().lower() in (
             "1", "true", "yes",
         )
-        if not model_override:
-            logger.warning(
-                "MNEMOS_LLM_PROVIDER=ollama without MNEMOS_MODEL; "
-                "defaulting to 'llama3.2'."
-            )
         return OllamaClient(
             base_url=base_url or "http://localhost:11434",
-            model=model_override or "llama3.2",
+            model=model_override,
             think=think,
         )
 
@@ -683,9 +712,6 @@ class OpenAICompatibleClient:
 
     def _post(self, messages: list, temperature: float | None = None,
               max_tokens: int | None = None) -> str:
-        import json
-        import urllib.request
-
         payload: dict = {
             "model": self._model,
             "max_tokens": max_tokens or self._max_tokens,
@@ -693,18 +719,10 @@ class OpenAICompatibleClient:
         }
         if temperature is not None:
             payload["temperature"] = temperature
-
-        headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-
-        req = urllib.request.Request(
-            f"{self._base_url}/chat/completions",
-            data=json.dumps(payload).encode(),
-            headers=headers,
+        headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else None
+        data = _http_post_json(
+            f"{self._base_url}/chat/completions", payload, headers, self._timeout
         )
-        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
-            data = json.loads(resp.read())
         return data["choices"][0]["message"]["content"]
 
     def complete(self, prompt: str) -> str:
@@ -762,9 +780,6 @@ class OllamaClient:
 
     def _post(self, messages: list, temperature: float | None = None,
               max_tokens: int | None = None) -> str:
-        import json
-        import urllib.request
-
         options: dict = {"num_predict": max_tokens or self._max_tokens}
         if temperature is not None:
             options["temperature"] = temperature
@@ -775,13 +790,9 @@ class OllamaClient:
             "messages": messages,
             "options": options,
         }
-        req = urllib.request.Request(
-            f"{self._base_url}/api/chat",
-            data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"},
+        data = _http_post_json(
+            f"{self._base_url}/api/chat", payload, timeout=self._timeout
         )
-        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
-            data = json.loads(resp.read())
         return (data.get("message") or {}).get("content", "")
 
     def complete(self, prompt: str) -> str:

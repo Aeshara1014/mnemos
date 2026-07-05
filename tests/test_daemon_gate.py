@@ -12,14 +12,6 @@ import json
 from mnemos.consolidation.daemon import ConsolidationDaemon
 
 
-class FakeClient:
-    def complete(self, prompt):
-        return "A considered response."
-
-    def structured_complete(self, system, user, temperature=0.0, max_tokens=2000):
-        return "[]"
-
-
 class TestDaemonDeepGate:
     def test_deep_without_client_downgrades_and_says_so(self, store):
         daemon = ConsolidationDaemon(store=store, config={}, llm_client=None)
@@ -33,8 +25,8 @@ class TestDaemonDeepGate:
         assert "connection_discovery" in stats["passes_run"]
         assert "decay" in stats["passes_run"]
 
-    def test_deep_with_client_runs_deep(self, store):
-        daemon = ConsolidationDaemon(store=store, config={}, llm_client=FakeClient())
+    def test_deep_with_client_runs_deep(self, store, stub_llm):
+        daemon = ConsolidationDaemon(store=store, config={}, llm_client=stub_llm)
 
         stats = daemon.run_cycle(deep=True, agent_id="default")
 

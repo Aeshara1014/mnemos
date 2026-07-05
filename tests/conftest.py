@@ -51,3 +51,55 @@ def retriever(store):
     """Create a ReactiveRetriever."""
     from mnemos.retrieval.reactive import ReactiveRetriever
     return ReactiveRetriever(store)
+
+
+@pytest.fixture
+def stub_llm():
+    """Minimal LLM stand-in: prose for complete(), empty array for structured."""
+    class _StubLLM:
+        def complete(self, prompt):
+            return "A considered response."
+
+        def structured_complete(self, system, user, temperature=0.0,
+                                max_tokens=2000):
+            return "[]"
+
+    return _StubLLM()
+
+
+@pytest.fixture
+def capture_urlopen(monkeypatch):
+    """Capture urllib POSTs; the test chooses the canned response body.
+
+    Returns (calls, respond_with): calls collects {url, body, headers,
+    timeout} per request; respond_with(dict) sets the JSON the fake
+    server returns.
+    """
+    import io
+    import json as _json
+
+    calls = []
+    canned: dict = {}
+
+    class _Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        calls.append({
+            "url": req.full_url,
+            "body": _json.loads(req.data.decode()),
+            "headers": dict(req.header_items()),
+            "timeout": timeout,
+        })
+        return _Resp(_json.dumps(canned).encode())
+
+    def respond_with(d):
+        nonlocal canned
+        canned = d
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    return calls, respond_with
