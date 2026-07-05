@@ -33,6 +33,7 @@ from ..core.identity import AgentIdentity
 from .connection_discovery import run_connection_discovery
 from .decay import run_decay_pass
 from .softening import run_softening_pass
+from .belief_formation import run_belief_formation_pass
 from .belief_review import run_belief_review
 from .reflection import run_reflection_pass
 
@@ -166,7 +167,23 @@ class ConsolidationDaemon:
                 except Exception as e:
                     stats["belief_review_error"] = str(e)
 
-            # ── PASS 5: Reflection ──
+            # ── PASS 5: Belief Formation ──
+            # After review (existing beliefs stress-tested first), before
+            # reflection (a newborn belief can be part of the night's story).
+            if consolidation_config.get("belief_formation_enabled", True):
+                try:
+                    formation_stats = run_belief_formation_pass(
+                        store=self._store,
+                        config=consolidation_config,
+                        llm_client=self._llm_client,
+                        agent_id=agent_id,
+                    )
+                    stats["belief_formation"] = formation_stats
+                    stats["passes_run"].append("belief_formation")
+                except Exception as e:
+                    stats["belief_formation_error"] = str(e)
+
+            # ── PASS 6: Reflection ──
             if consolidation_config.get("reflection_enabled", True):
                 try:
                     identity = self._store.get_identity(agent_id)
