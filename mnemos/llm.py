@@ -7,13 +7,19 @@ Mnemos uses LLM calls for:
 - Impact extraction (distilling the lasting insight from an experience)
 - Thought generation (synthesizing patterns from recent memories)
 
-Three implementations:
-- AnthropicClient: Uses the Anthropic SDK (Claude models)
-- OpenRouterClient: Uses OpenRouter API (any model)
-- MockClient: Returns canned responses (for testing)
+Implementations:
+- AnthropicClient: Anthropic SDK (Claude models)
+- OpenAIClient: OpenAI API
+- OpenRouterClient: OpenRouter API (any hosted model)
+- OpenAICompatibleClient: any OpenAI-compatible server via MNEMOS_LLM_BASE_URL —
+  the local-substrate door (LM Studio, Ollama, vLLM, mlx servers)
+- ClaudeCLIClient: local `claude` CLI (subscription auth)
+- MockClient: canned responses (for testing)
 
 Auto-detection: create_client() checks env vars and returns the
-appropriate client, or None if no API keys are found.
+appropriate client, or None if no API keys are found. An explicitly
+configured MNEMOS_LLM_BASE_URL outranks ambient cloud keys — a
+deliberate local endpoint is the strongest signal there is.
 """
 
 from __future__ import annotations
@@ -109,6 +115,11 @@ class ClaudeCLIClient:
     Each call spawns a one-shot ``claude -p`` process, so it is slower than the
     API and meant for background work (consolidation / reflection), not hot
     paths. Select with ``MNEMOS_LLM_PROVIDER=claude-cli``.
+
+    Runs WITHOUT ``--dangerously-skip-permissions`` by default: background
+    maintenance is pure text work and must not carry a tool-capable
+    permissions bypass. Opt in only if you understand the implications
+    (``skip_permissions=True`` / ``MNEMOS_CLAUDE_CLI_SKIP_PERMISSIONS=1``).
     """
 
     def __init__(
@@ -116,6 +127,7 @@ class ClaudeCLIClient:
         model: str = "claude-haiku-4-5-20251001",
         claude_bin: str | None = None,
         timeout: int = 120,
+        skip_permissions: bool = False,
     ) -> None:
         import shutil
 
@@ -127,18 +139,21 @@ class ClaudeCLIClient:
             or os.path.expanduser("~/.local/bin/claude")
         )
         self._timeout = timeout
+        self._skip_permissions = skip_permissions
+
+    def _build_cmd(self, prompt: str) -> list:
+        cmd = [self._bin, "--model", self._model]
+        if self._skip_permissions:
+            cmd.append("--dangerously-skip-permissions")
+        cmd.extend(["-p", prompt])
+        return cmd
 
     def _run(self, prompt: str) -> str:
         import subprocess
 
         try:
             result = subprocess.run(
-                [
-                    self._bin,
-                    "--model", self._model,
-                    "--dangerously-skip-permissions",
-                    "-p", prompt,
-                ],
+                self._build_cmd(prompt),
                 capture_output=True,
                 text=True,
                 timeout=self._timeout,
@@ -366,11 +381,14 @@ def create_client(agent_model_hint: str | None = None) -> "LLMClient | None":
     substrate affinity.
 
     Provider resolution checks env vars and .env files in order:
-    1. MNEMOS_LLM_PROVIDER env var (openai|anthropic|openrouter) — forces provider
-    2. ANTHROPIC_API_KEY → AnthropicClient
-    3. OPENROUTER_API_KEY → OpenRouterClient
-    4. OPENAI_API_KEY → OpenAIClient
-    5. Neither → None (system uses rule-based fallbacks)
+    1. MNEMOS_LLM_PROVIDER env var (openai|anthropic|openrouter|claude-cli|
+       openai-compatible|local) — forces provider
+    2. MNEMOS_LLM_BASE_URL → OpenAICompatibleClient (an explicit local/compatible
+       endpoint outranks ambient cloud keys)
+    3. ANTHROPIC_API_KEY → AnthropicClient
+    4. OPENROUTER_API_KEY → OpenRouterClient
+    5. OPENAI_API_KEY → OpenAIClient
+    6. None of the above → None (system uses rule-based fallbacks)
 
     Affinity gate (see mnemos.affinity): if MNEMOS_AGENT_MODEL is set and
     the resolved substrate model violates MNEMOS_SUBSTRATE_AFFINITY
@@ -459,8 +477,31 @@ def _create_client_unchecked() -> "LLMClient | None":
     if not forced:
         forced = _load_env_key("MNEMOS_LLM_PROVIDER").lower()
 
+    base_url = os.environ.get("MNEMOS_LLM_BASE_URL", "").strip()
+    if not base_url:
+        base_url = _load_env_key("MNEMOS_LLM_BASE_URL")
+
     if forced in ("claude-cli", "claude_cli", "subscription"):
-        return ClaudeCLIClient(model=model_override or "claude-haiku-4-5-20251001")
+        skip = os.environ.get(
+            "MNEMOS_CLAUDE_CLI_SKIP_PERMISSIONS", ""
+        ).strip().lower() in ("1", "true", "yes")
+        return ClaudeCLIClient(
+            model=model_override or "claude-haiku-4-5-20251001",
+            skip_permissions=skip,
+        )
+
+    if forced in ("openai-compatible", "openai_compatible", "local", "lmstudio"):
+        if base_url:
+            return OpenAICompatibleClient(
+                base_url=base_url,
+                model=model_override or "local-model",
+                api_key=_load_env_key("MNEMOS_LLM_API_KEY"),
+            )
+        logger.warning(
+            "MNEMOS_LLM_PROVIDER=%s but MNEMOS_LLM_BASE_URL is not set; "
+            "falling back to provider auto-detection.",
+            forced,
+        )
 
     if forced == "openai":
         key = _load_env_key("OPENAI_API_KEY")
@@ -484,6 +525,15 @@ def _create_client_unchecked() -> "LLMClient | None":
             "falling back to provider auto-detection."
         )
     # forced == "anthropic" or empty string → fall through to auto-detect
+
+    # An explicitly configured local/compatible endpoint outranks ambient
+    # cloud keys — a deliberate base_url is the strongest signal there is.
+    if base_url:
+        return OpenAICompatibleClient(
+            base_url=base_url,
+            model=model_override or "local-model",
+            api_key=_load_env_key("MNEMOS_LLM_API_KEY"),
+        )
 
     anthropic_key = _load_env_key("ANTHROPIC_API_KEY")
     if anthropic_key:
@@ -585,3 +635,76 @@ class OpenAIClient:
         )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
+
+
+class OpenAICompatibleClient:
+    """LLM client for any OpenAI-compatible server at a configurable base URL.
+
+    The local-substrate door: LM Studio, Ollama's /v1 endpoint, vLLM, mlx
+    servers — anything speaking the OpenAI chat-completions dialect on any
+    host. Stdlib-only (urllib), like OpenRouterClient.
+
+    Env vars:
+        MNEMOS_LLM_BASE_URL   e.g. "http://localhost:1234/v1"
+        MNEMOS_MODEL          the model id the server has loaded
+        MNEMOS_LLM_API_KEY    optional — most local servers ignore auth
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str = "local-model",
+        api_key: str | None = None,
+        max_tokens: int = 500,
+        timeout: int = 300,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._model = model
+        self._api_key = (api_key or "").strip()
+        self._max_tokens = max_tokens
+        self._timeout = timeout
+
+    def _post(self, messages: list, temperature: float | None = None,
+              max_tokens: int | None = None) -> str:
+        import json
+        import urllib.request
+
+        payload: dict = {
+            "model": self._model,
+            "max_tokens": max_tokens or self._max_tokens,
+            "messages": messages,
+        }
+        if temperature is not None:
+            payload["temperature"] = temperature
+
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+
+        req = urllib.request.Request(
+            f"{self._base_url}/chat/completions",
+            data=json.dumps(payload).encode(),
+            headers=headers,
+        )
+        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            data = json.loads(resp.read())
+        return data["choices"][0]["message"]["content"]
+
+    def complete(self, prompt: str) -> str:
+        return self._post([{"role": "user", "content": prompt}])
+
+    def structured_complete(
+        self,
+        system: str,
+        user: str,
+        temperature: float = 0.0,
+        max_tokens: int = 2000,
+    ) -> str:
+        return self._post(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
