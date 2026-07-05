@@ -13,6 +13,8 @@ Implementations:
 - OpenRouterClient: OpenRouter API (any hosted model)
 - OpenAICompatibleClient: any OpenAI-compatible server via MNEMOS_LLM_BASE_URL —
   the local-substrate door (LM Studio, Ollama, vLLM, mlx servers)
+- OllamaClient: Ollama's native /api/chat with think=false — for thinking-capable
+  models, whose reasoning otherwise eats the whole output budget on /v1
 - ClaudeCLIClient: local `claude` CLI (subscription auth)
 - MockClient: canned responses (for testing)
 
@@ -503,6 +505,21 @@ def _create_client_unchecked() -> "LLMClient | None":
             forced,
         )
 
+    if forced == "ollama":
+        think = os.environ.get("MNEMOS_OLLAMA_THINK", "").strip().lower() in (
+            "1", "true", "yes",
+        )
+        if not model_override:
+            logger.warning(
+                "MNEMOS_LLM_PROVIDER=ollama without MNEMOS_MODEL; "
+                "defaulting to 'llama3.2'."
+            )
+        return OllamaClient(
+            base_url=base_url or "http://localhost:11434",
+            model=model_override or "llama3.2",
+            think=think,
+        )
+
     if forced == "openai":
         key = _load_env_key("OPENAI_API_KEY")
         if key:
@@ -689,6 +706,83 @@ class OpenAICompatibleClient:
         with urllib.request.urlopen(req, timeout=self._timeout) as resp:
             data = json.loads(resp.read())
         return data["choices"][0]["message"]["content"]
+
+    def complete(self, prompt: str) -> str:
+        return self._post([{"role": "user", "content": prompt}])
+
+    def structured_complete(
+        self,
+        system: str,
+        user: str,
+        temperature: float = 0.0,
+        max_tokens: int = 2000,
+    ) -> str:
+        return self._post(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+
+class OllamaClient:
+    """LLM client for a local Ollama server via its native /api/chat endpoint.
+
+    Exists for thinking-capable models (qwen3.x and kin): through the
+    OpenAI-compatible /v1 endpoint their reasoning consumes the entire output
+    budget and structured prompts come back with empty content. Ollama's
+    native API has the explicit switch — ``think: false`` — and substrate
+    work wants finished thoughts, not the thinking.
+
+    Env vars:
+        MNEMOS_LLM_BASE_URL    server root (default "http://localhost:11434";
+                               a trailing "/v1" is tolerated and stripped)
+        MNEMOS_MODEL           the Ollama model tag, e.g. "qwen3.6:35b-a3b"
+        MNEMOS_OLLAMA_THINK=1  re-enable thinking (off by default)
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        model: str = "llama3.2",
+        max_tokens: int = 500,
+        timeout: int = 300,
+        think: bool = False,
+    ) -> None:
+        url = base_url.rstrip("/")
+        if url.endswith("/v1"):
+            url = url[:-3].rstrip("/")
+        self._base_url = url
+        self._model = model
+        self._max_tokens = max_tokens
+        self._timeout = timeout
+        self._think = think
+
+    def _post(self, messages: list, temperature: float | None = None,
+              max_tokens: int | None = None) -> str:
+        import json
+        import urllib.request
+
+        options: dict = {"num_predict": max_tokens or self._max_tokens}
+        if temperature is not None:
+            options["temperature"] = temperature
+        payload = {
+            "model": self._model,
+            "stream": False,
+            "think": self._think,
+            "messages": messages,
+            "options": options,
+        }
+        req = urllib.request.Request(
+            f"{self._base_url}/api/chat",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            data = json.loads(resp.read())
+        return (data.get("message") or {}).get("content", "")
 
     def complete(self, prompt: str) -> str:
         return self._post([{"role": "user", "content": prompt}])
