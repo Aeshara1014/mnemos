@@ -89,8 +89,9 @@ class ConsolidationDaemon:
         """Run a consolidation cycle with all enabled passes.
 
         Args:
-            deep: If True, run all passes including LLM-mediated ones.
-                If False, run only connection_discovery and decay.
+            deep: If True, run all passes including LLM-mediated ones —
+                requires an LLM client. Without one the cycle downgrades to
+                shallow and records why; deep work never runs degraded.
             agent_id: Which agent's memories to consolidate.
 
         Returns:
@@ -99,15 +100,27 @@ class ConsolidationDaemon:
         cycle_id = f"cycle_{_new_ulid()}"
         started_at = _now_iso()
 
+        # The daemon owns the deep gate. Deep passes rewrite memories and
+        # require the (affinity-approved) substrate client; when it is absent
+        # — missing key or affinity refusal — the cycle downgrades here, so
+        # every entry point behaves identically and cycle_type records what
+        # actually RAN, never what was merely requested.
+        can_deep = bool(deep) and self._llm_client is not None
+
         stats: dict[str, Any] = {
             "cycle_id": cycle_id,
-            "cycle_type": "deep" if deep else "shallow",
+            "cycle_type": "deep" if can_deep else "shallow",
             "passes_run": [],
             "started_at": started_at,
             # Substrate provenance: every consolidation_log row records who
             # performed this agent's sleep.
             "substrate": self._substrate_provenance(),
         }
+        if deep and not can_deep:
+            stats["deep_downgraded"] = (
+                "deep requested, but no LLM client (missing key or affinity "
+                "refusal) — rule-based local passes only"
+            )
 
         consolidation_config = self._config.get("consolidation", self._config)
 
@@ -138,7 +151,7 @@ class ConsolidationDaemon:
             stats["decay_error"] = str(e)
 
         # ── DEEP ONLY PASSES ──
-        if deep:
+        if can_deep:
             # ── PASS 3: Softening ──
             if consolidation_config.get("softening_enabled", True):
                 try:
