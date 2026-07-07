@@ -26,11 +26,17 @@ def build_context_packet(
     max_functional: int = 10,
     max_hypomnema: int = 8,
     max_engrams: int = 6,
+    embedding_index: Any | None = None,
 ) -> dict[str, Any]:
     """Build the complete memory packet an agent should read before acting.
 
     The packet orders memory from most immediately actionable to most durable:
     functional memory, hypomnema continuity, then Mnemos engrams and beliefs.
+
+    ``embedding_index`` is an optional semantic index (anything exposing a
+    ``.search(cue, k, exclude_ids)`` method). When supplied it is threaded
+    into engram retrieval so meaning-matches supplement keyword (FTS) seeds;
+    when None, retrieval is FTS-only (the prior behavior).
     """
     identity = store.get_identity(agent_id)
     beliefs = store.get_beliefs(agent_id, active_only=True)
@@ -67,7 +73,7 @@ def build_context_packet(
 
     engrams: list[dict[str, Any]] = []
     if query.strip():
-        retriever = ReactiveRetriever(store)
+        retriever = ReactiveRetriever(store, embedding_index=embedding_index)
         emotional_state = store.get_latest_emotional_state(agent_id)
         results = retriever.retrieve(
             cue=query,

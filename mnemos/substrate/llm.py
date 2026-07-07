@@ -13,7 +13,13 @@ from typing import Optional
 
 
 def get_api_key() -> tuple[str, str]:
-    """Find API key from environment. Returns (key, provider)."""
+    """Find API key from the environment. Returns (key, provider).
+
+    Environment variables only. This deliberately does NOT read credentials
+    from ambient config files (``~/.openclaw/*`` or ``~/.mnemos/config.json``):
+    a substrate must never silently acquire a cloud key it wasn't explicitly
+    handed. No env key -> no key -> the caller degrades to a rule-based pass.
+    """
     key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if key:
         return key, "openrouter"
@@ -21,26 +27,6 @@ def get_api_key() -> tuple[str, str]:
     key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if key:
         return key, "anthropic"
-
-    # Check common config file locations
-    for config_path in [
-        Path.home() / ".openclaw" / "openclaw.json",
-        Path.home() / ".openclaw" / "config.json",
-        Path.home() / ".mnemos" / "config.json",
-    ]:
-        if config_path.exists():
-            try:
-                with open(config_path) as f:
-                    cfg = json.load(f)
-                key = cfg.get("openRouterApiKey", "")
-                if not key:
-                    key = (cfg.get("tools", {}).get("web", {})
-                           .get("search", {}).get("perplexity", {})
-                           .get("apiKey", ""))
-                if key:
-                    return key, "openrouter"
-            except Exception:
-                pass
 
     return "", ""
 
