@@ -146,24 +146,12 @@ def index_session(
     session_key = session_id or path.stem
     db = db_path or str(Path.home() / ".mnemos" / f"{agent_id}.db")
 
-    # Resolve API key: explicit > env > openclaw agent config
+    # Resolve API key from the explicit arg or the environment ONLY. We
+    # deliberately do NOT hunt ~/.openclaw agent model configs for a key — a
+    # substrate must never silently acquire a cloud credential it wasn't
+    # explicitly handed. (Claude Code sessions route through the local `claude`
+    # CLI below anyway, so no OpenRouter key is needed for the default path.)
     key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
-    if not key:
-        # Look in OpenClaw agent model configs (they store OpenRouter keys)
-        for agent_name in _discover_openclaw_agents():
-            models_path = Path.home() / ".openclaw" / "agents" / agent_name / "agent" / "models.json"
-            if models_path.exists():
-                try:
-                    models = json.loads(models_path.read_text())
-                    for provider in models.get("providers", {}).values():
-                        k = provider.get("apiKey", "")
-                        if k and k.startswith("sk-or"):
-                            key = k
-                            break
-                except Exception:
-                    pass
-            if key:
-                break
 
     # Claude Code sessions are subscription-authed: route memory extraction
     # through the local `claude` CLI (no API key) rather than the OpenRouter

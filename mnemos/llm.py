@@ -372,33 +372,6 @@ def _load_env_key(key_name: str) -> str:
     return ""
 
 
-
-def _load_openclaw_openrouter_key() -> str:
-    """Try to find OpenRouter API key from OpenClaw config."""
-    from pathlib import Path
-    import json
-    if _dotenv_disabled():
-        # Same ambient-machine-state class as .env files.
-        return ""
-    openclaw_config = Path.home() / ".openclaw" / "openclaw.json"
-    if openclaw_config.exists():
-        try:
-            with open(openclaw_config) as f:
-                cfg = json.load(f)
-            key = (
-                cfg.get("tools", {})
-                .get("web", {})
-                .get("search", {})
-                .get("perplexity", {})
-                .get("apiKey", "")
-            ).strip()
-            if key:
-                return key
-        except (json.JSONDecodeError, OSError):
-            pass
-    return ""
-
-
 def create_client(agent_model_hint: str | None = None) -> "LLMClient | None":
     """Auto-detect and create the appropriate LLM client, gated by
     substrate affinity.
@@ -559,8 +532,6 @@ def _create_client_unchecked() -> "LLMClient | None":
         )
     elif forced == "openrouter":
         key = _load_env_key("OPENROUTER_API_KEY")
-        if not key:
-            key = _load_openclaw_openrouter_key()
         if key:
             return OpenRouterClient(
                 api_key=key,

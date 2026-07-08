@@ -67,3 +67,40 @@ def test_visual_snapshot_returns_mermaid(store):
     assert "```mermaid" in snapshot
     assert "Functional memory" in snapshot
     assert "Hypomnema" in snapshot
+
+
+def _spy_retriever(monkeypatch, captured):
+    """Replace ReactiveRetriever with a subclass that records its index arg."""
+    import mnemos.interface.context_packet as cp
+
+    base = cp.ReactiveRetriever
+
+    class Spy(base):
+        def __init__(self, store, embedding_index=None, **kwargs):
+            captured.append(embedding_index)
+            super().__init__(store, embedding_index=embedding_index, **kwargs)
+
+    monkeypatch.setattr(cp, "ReactiveRetriever", Spy)
+
+
+def test_embedding_index_threads_to_retriever(store, monkeypatch):
+    """item 9: build_context_packet forwards embedding_index to the retriever.
+
+    Before this, the retriever was built with no index, so semantic (embedding)
+    recall was unreachable and chat recall was FTS-only.
+    """
+    captured: list = []
+    _spy_retriever(monkeypatch, captured)
+
+    sentinel = object()
+    build_context_packet(store, "a real query", agent_id="vektor", embedding_index=sentinel)
+    assert captured == [sentinel]
+
+
+def test_embedding_index_defaults_to_none(store, monkeypatch):
+    """Omitting the arg preserves the prior FTS-only behavior."""
+    captured: list = []
+    _spy_retriever(monkeypatch, captured)
+
+    build_context_packet(store, "a real query", agent_id="vektor")
+    assert captured == [None]

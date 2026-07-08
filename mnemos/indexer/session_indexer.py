@@ -423,20 +423,10 @@ class SessionIndexer:
     # ------------------------------------------------------------------
 
     def _get_api_key(self) -> str:
-        if self._api_key:
-            return self._api_key
-        # Fallback: read from openclaw config
-        config_path = Path.home() / ".openclaw" / "openclaw.json"
-        if config_path.exists():
-            try:
-                cfg = json.loads(config_path.read_text())
-                key = cfg.get("openRouterApiKey", "")
-                if key:
-                    self._api_key = key
-                    return key
-            except Exception:
-                pass
-        return ""
+        # Environment/explicit only (resolved at construction). Deliberately
+        # does NOT hunt ~/.openclaw for a key — a substrate must never
+        # silently acquire a cloud credential it wasn't explicitly handed.
+        return self._api_key or ""
 
     def _load_extraction_prompt(self) -> str:
         if self._extractor_prompt is not None:

@@ -292,7 +292,14 @@ def evaluate_beliefs(
 # ---------------------------------------------------------------------------
 
 def _extract_json(raw: str) -> list[dict]:
-    """Extract a JSON array from LLM response, handling common formatting issues."""
+    """Extract JSON records from an LLM response, tolerating common quirks.
+
+    Handles markdown code fences, a single object or array, and — for local
+    models that emit several objects back-to-back with no array wrapper —
+    CONCATENATED values like ``{...}{...}`` or ``[...] [...]`` (optionally
+    separated by whitespace, newlines, or commas). Returns a flat list of the
+    dict records found; an empty list if nothing parses.
+    """
     text = raw.strip()
 
     # Strip markdown code fences if present
@@ -302,18 +309,49 @@ def _extract_json(raw: str) -> list[dict]:
         end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
         text = "\n".join(lines[start:end]).strip()
 
+    if not text:
+        return []
+
+    # Fast path: a single well-formed value (the overwhelmingly common case).
     try:
         parsed = json.loads(text)
         if isinstance(parsed, list):
-            return parsed
-        elif isinstance(parsed, dict):
+            return [item for item in parsed if isinstance(item, dict)]
+        if isinstance(parsed, dict):
             return [parsed]
-        else:
-            log.warning("LLM returned unexpected JSON type: %s", type(parsed))
-            return []
-    except json.JSONDecodeError as e:
-        log.error("Failed to parse LLM JSON response: %s\nRaw: %s", e, text[:500])
+        log.warning("LLM returned unexpected JSON type: %s", type(parsed))
         return []
+    except (json.JSONDecodeError, RecursionError):
+        # RecursionError: the C json scanner caps nesting (~10k) and raises a
+        # RuntimeError subclass, NOT JSONDecodeError — swallow it too so a
+        # pathologically deep payload never propagates out of this helper.
+        pass  # fall through to concatenated-value handling
+
+    # Fallback: consume back-to-back values one at a time. A single
+    # json.loads() would silently keep only the first of ``{...}{...}``.
+    decoder = json.JSONDecoder()
+    records: list[dict] = []
+    idx, n = 0, len(text)
+    while idx < n:
+        while idx < n and text[idx] in " \t\r\n,":
+            idx += 1
+        if idx >= n:
+            break
+        try:
+            value, end = decoder.raw_decode(text, idx)
+        except (json.JSONDecodeError, RecursionError) as e:
+            log.error(
+                "Failed to parse LLM JSON response at pos %d: %s\nRaw: %s",
+                idx, e, text[:500],
+            )
+            break
+        if isinstance(value, dict):
+            records.append(value)
+        elif isinstance(value, list):
+            records.extend(item for item in value if isinstance(item, dict))
+        idx = end
+
+    return records
 
 
 def _parse_connection_response(
