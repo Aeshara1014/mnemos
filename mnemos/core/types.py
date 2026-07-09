@@ -88,6 +88,7 @@ class SourceType(str, Enum):
     OBSERVER = "observer"        # From external observer
     BOOTSTRAP = "bootstrap"      # From initialization/migration
     REFLECTION = "reflection"    # From consolidation reflection pass
+    WANDERING = "wandering"      # From the living tick's silence-driven mind-wandering
     BROWSER_EXTRACTION = "browser_extraction"  # From Sovereign Mind browser extension
     EXTERNAL = "external"                        # From external ingestion pipeline
 

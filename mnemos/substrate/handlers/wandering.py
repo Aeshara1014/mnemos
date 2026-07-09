@@ -23,6 +23,7 @@ from datetime import datetime, timezone, timedelta
 from ..events import SubstrateEvent, EventType
 from ..config import SubstrateConfig
 from ..modulators import ModulatorState
+from ...core.types import SourceType
 
 log = logging.getLogger("mnemos.substrate.wandering")
 
@@ -163,7 +164,7 @@ If something surfaces: {{"thought": "<the wandering thought>", "origin": "<which
     try:
         from mnemos.store.embedding_index import EmbeddingIndex
         ei = EmbeddingIndex(db_path=db_path)
-        if ei.available():
+        if ei.available:
             similar = ei.search(full_content, k=3)
             for engram_id, score in similar:
                 if score >= EMBEDDING_SIMILARITY_THRESHOLD:
@@ -188,12 +189,23 @@ If something surfaces: {{"thought": "<the wandering thought>", "origin": "<which
     ei = EI(db_path=db_path)
     encoder = Encoder(store, embedding_index=ei, llm_client=llm_client)
 
-    encoder.encode(
+    engram = encoder.encode(
         content=full_content,
         impact=f"Surfaced during silence. Origin: {origin}",
         kind="episodic",
         tags=["wandering", "silence"],
+        source=SourceType.WANDERING,
+        agent_id=config.agent_id,
         skip_surprise_detection=True,
     )
 
+    # Signal a REAL write. Every suppressed path above returns the empty list,
+    # so this non-empty return is the honest "a wandering actually landed"
+    # marker the tick summary (and the Keeper's activity log) key off — it is
+    # NOT re-cascaded (the cascade is depth-1).
+    produced_events.append(SubstrateEvent(
+        event_type=EventType.WANDERING_RECORDED,
+        payload={"engram_id": engram.id},
+        source="wandering",
+    ))
     return produced_events

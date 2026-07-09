@@ -66,15 +66,31 @@ log = logging.getLogger("mnemos.substrate")
 class Substrate:
     """The consolidation daemon for an agent's memory."""
 
-    def __init__(self, config: SubstrateConfig | None = None):
+    def __init__(
+        self,
+        config: SubstrateConfig | None = None,
+        *,
+        store=None,
+        embedding_index=None,
+        llm_client=None,
+    ):
         self.config = config or SubstrateConfig()
         self.db_path = os.path.expanduser(self.config.db_path)
 
-        # Initialize Mnemos components
-        self.store = EngramStore(self.db_path)
-        self.embedding_index = EmbeddingIndex(db_path=self.db_path)
-
-        if create_client is not None:
+        # Components may be injected by a host that already owns them. The
+        # Keeper hands in its runtime's store / embedding_index / llm_client
+        # so the living tick reuses the agent's already-bound local model
+        # (never re-resolving to an ambient cloud default) and the single
+        # serialized store connection. Left unset, we build our own from
+        # db_path exactly as before — the standalone cron path is unchanged.
+        self.store = store if store is not None else EngramStore(self.db_path)
+        self.embedding_index = (
+            embedding_index if embedding_index is not None
+            else EmbeddingIndex(db_path=self.db_path)
+        )
+        if llm_client is not None:
+            self.llm_client = llm_client
+        elif create_client is not None:
             self.llm_client = create_client()
         else:
             self.llm_client = None
@@ -127,6 +143,91 @@ class Substrate:
         )
 
         # ── Phase 6: Event cascade (handlers) ──
+        self._cascade(events, modulators, summary)
+
+        # ── Phase 6.5: Introspection self-audit (opt-in, off by default) ──
+        if self.config.introspection_enabled:
+            try:
+                from .introspection_pass import run_introspection_pass
+                summary["introspection"] = run_introspection_pass(
+                    self.config, self.store, self.llm_client
+                )
+            except Exception as e:
+                log.error(f"Introspection pass failed: {e}", exc_info=True)
+                summary["introspection_error"] = str(e)
+
+        # ── Phase 7: Log tick summary ──
+        tick_end = datetime.now(timezone.utc)
+        summary["tick_duration_seconds"] = (tick_end - tick_start).total_seconds()
+        summary["modulators"] = {
+            "arousal": modulators.arousal,
+            "openness": modulators.openness,
+            "resolution": modulators.resolution,
+            "selection_threshold": modulators.selection_threshold,
+            "temperature": modulators.temperature,
+        }
+
+        self._log_tick(summary)
+        return summary
+
+    def live_tick(self) -> dict:
+        """Run only the LIVING phases — the part that makes an agent stir on
+        its own — without the consolidation pass.
+
+        The Keeper owns consolidation through ``MnemosRuntime.maintain()``,
+        which carries the deliberate deep/shallow gate and the richer
+        ``ConsolidationDaemon`` cycle. Running ``_consolidate()`` here too
+        would double the decay/connection/belief work and bypass that gate,
+        so ``live_tick`` deliberately skips Phase 2 (consolidation) and
+        Phase 4 (belief-tier crossing — it needs a pre-consolidation
+        snapshot to compare against, which only ``tick()`` takes).
+
+        What remains is temporal awareness: notice extended silence and let
+        the mind wander. As the two consolidation paths are reconciled, the
+        events that feed the dreaming / insight / reflection handlers will
+        flow in here too; for now the only living event is silence →
+        wandering (DD-030 strand 1).
+        """
+        tick_start = datetime.now(timezone.utc)
+        summary = {
+            "tick_start": tick_start.isoformat(),
+            "kind": "living",
+            "events_produced": 0,
+            "events_handled": 0,
+            "engrams_decayed": 0,  # living tick never decays; kept for _log_tick
+            "handler_outputs": [],
+        }
+
+        # ── Temporal events (silence detection) ──
+        events = self._check_temporal(summary)
+        summary["events_produced"] = len(events)
+
+        # ── Modulators (handlers read them; no consolidation is run) ──
+        modulators = compute_modulators(
+            self.db_path,
+            recent_window_hours=self.config.recent_window_hours,
+        )
+
+        # ── Event cascade (handlers) ──
+        self._cascade(events, modulators, summary)
+
+        tick_end = datetime.now(timezone.utc)
+        summary["tick_duration_seconds"] = (tick_end - tick_start).total_seconds()
+        summary["modulators"] = {
+            "arousal": modulators.arousal,
+            "openness": modulators.openness,
+            "resolution": modulators.resolution,
+            "selection_threshold": modulators.selection_threshold,
+            "temperature": modulators.temperature,
+        }
+
+        self._log_tick(summary)
+        return summary
+
+    def _cascade(self, events, modulators, summary: dict) -> None:
+        """Dispatch events through their handlers (depth 1). Shared by the
+        full ``tick()`` and the living ``live_tick()`` so both apply the same
+        HANDLER_MAP, per-tick engram cap, and error isolation."""
         engrams_produced = 0
         for event in events:
             if engrams_produced >= self.config.max_engrams_per_tick:
@@ -157,31 +258,6 @@ class Substrate:
                 # Don't cascade further — depth 1 is enough for now
             except Exception as e:
                 log.error(f"Handler {handler.__name__} failed on {event}: {e}", exc_info=True)
-
-        # ── Phase 6.5: Introspection self-audit (opt-in, off by default) ──
-        if self.config.introspection_enabled:
-            try:
-                from .introspection_pass import run_introspection_pass
-                summary["introspection"] = run_introspection_pass(
-                    self.config, self.store, self.llm_client
-                )
-            except Exception as e:
-                log.error(f"Introspection pass failed: {e}", exc_info=True)
-                summary["introspection_error"] = str(e)
-
-        # ── Phase 7: Log tick summary ──
-        tick_end = datetime.now(timezone.utc)
-        summary["tick_duration_seconds"] = (tick_end - tick_start).total_seconds()
-        summary["modulators"] = {
-            "arousal": modulators.arousal,
-            "openness": modulators.openness,
-            "resolution": modulators.resolution,
-            "selection_threshold": modulators.selection_threshold,
-            "temperature": modulators.temperature,
-        }
-
-        self._log_tick(summary)
-        return summary
 
     def _snapshot_beliefs(self):
         """Take a snapshot of belief confidences for tier crossing detection."""
@@ -241,24 +317,25 @@ class Substrate:
             if not engram:
                 continue
             try:
-                similar = self.embedding_index.search(engram.content, limit=3)
-                for match in similar:
-                    if match["id"] != row[0]:
+                # EmbeddingIndex.search(query, k=) returns (id, score) tuples.
+                similar = self.embedding_index.search(engram.content, k=3)
+                for match_id, score in similar:
+                    if match_id != row[0]:
                         existing = sqlite3.connect(self.db_path)
                         exists = existing.execute(
                             "SELECT COUNT(*) FROM connections WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)",
-                            (row[0], match["id"], match["id"], row[0])
+                            (row[0], match_id, match_id, row[0])
                         ).fetchone()[0]
                         existing.close()
 
-                        if exists == 0 and match.get("score", 0) > 0.7:
+                        if exists == 0 and score > 0.7:
                             events.append(SubstrateEvent(
                                 event_type=EventType.CONNECTION_DISCOVERED,
                                 payload={
                                     "from_engram_id": row[0],
-                                    "to_engram_id": match["id"],
+                                    "to_engram_id": match_id,
                                     "connection_type": "parallels",
-                                    "similarity": match.get("score", 0),
+                                    "similarity": score,
                                 },
                                 source="connection_discovery",
                             ))
@@ -274,10 +351,10 @@ class Substrate:
         reviewed = 0
         for belief in beliefs[:self.config.belief_review_limit]:
             try:
-                results = self.embedding_index.search(belief.content, limit=3)
-                for match in results:
-                    if match.get("score", 0) > 0.6:
-                        engram = self.store.get_engram(match["id"])
+                results = self.embedding_index.search(belief.content, k=3)
+                for match_id, score in results:
+                    if score > 0.6:
+                        engram = self.store.get_engram(match_id)
                         if engram and engram.impact:
                             reviewed += 1
             except Exception:
