@@ -38,6 +38,9 @@ class SubstrateConfig:
     # ── Throttles ──
     max_dreams_per_week: int = 10      # Max dream engrams per 7-day window
     max_wanderings_per_week: int = 5   # Max wandering engrams per 7-day window
+    max_insights_per_week: int = 3     # Max insight engrams per 7-day window
+    max_surprises_per_week: int = 3    # Max surprise-reflection engrams per 7-day window
+    living_lookback_hours: int = 26    # How far back a living tick notices fresh connections/surprises
 
     # ── Safety ──
     max_engrams_per_tick: int = 3      # Max new engrams a tick can produce (prevents runaway)

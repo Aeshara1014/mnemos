@@ -182,11 +182,18 @@ class Substrate:
         Phase 4 (belief-tier crossing — it needs a pre-consolidation
         snapshot to compare against, which only ``tick()`` takes).
 
-        What remains is temporal awareness: notice extended silence and let
-        the mind wander. As the two consolidation paths are reconciled, the
-        events that feed the dreaming / insight / reflection handlers will
-        flow in here too; for now the only living event is silence →
-        wandering (DD-030 strand 1).
+        What remains is living awareness — noticing, never re-doing:
+        - silence → wandering (DD-030 strand 1);
+        - fresh connections the daemon's consolidation already formed →
+          insight (the tick does NOT discover connections here — that would
+          double consolidation work — it notices ones recently written to
+          the connections table and lets the insight handler reflect);
+        - encode-time surprise traces (encoding_context.surprise_level,
+          stamped by the encoder during normal chat encodes) → surprise
+          reflection.
+        The dreaming(collision) handler still has no living source — its
+        MEMORY_SOFTENED events come from the substrate's own consolidation,
+        which stays skipped here (named in the platform's machinery gaps).
         """
         tick_start = datetime.now(timezone.utc)
         summary = {
@@ -200,6 +207,10 @@ class Substrate:
 
         # ── Temporal events (silence detection) ──
         events = self._check_temporal(summary)
+
+        # ── Living notices: fresh connections → insight; surprise traces ──
+        events.extend(self._check_fresh_connections())
+        events.extend(self._check_fresh_surprises())
         summary["events_produced"] = len(events)
 
         # ── Modulators (handlers read them; no consolidation is run) ──
@@ -392,6 +403,107 @@ class Substrate:
                 ))
                 log.info(f"Extended silence detected: {silence_hours:.1f}h since last memory")
 
+        return events
+
+    # Inner-life source types a living notice must never feed on — reflecting
+    # on reflections is a hall of mirrors, not a mind.
+    _INNER_SOURCE_TYPES = (
+        "insight", "surprise", "wandering", "dream", "reflection", "observer",
+    )
+
+    def _living_cutoff_iso(self) -> str:
+        """The lookback horizon for living notices, in the store's own
+        ISO-8601 format so string comparison is exact."""
+        return (
+            datetime.now(timezone.utc)
+            - timedelta(hours=self.config.living_lookback_hours)
+        ).isoformat()
+
+    def _check_fresh_connections(self) -> list[SubstrateEvent]:
+        """Notice connections the daemon's consolidation recently formed and
+        offer them to the insight handler. Noticing, never re-doing: nothing
+        here discovers connections — that is consolidation's job — this reads
+        what was already written. Both endpoints must be the agent's own
+        active memories, and neither may itself be inner-life output (an
+        insight about an insight is noise wearing depth). Capped small; the
+        handler's own gates (count / hash / embedding / time) are the real
+        throttle."""
+        events: list[SubstrateEvent] = []
+        placeholders = ",".join("?" for _ in self._INNER_SOURCE_TYPES)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(f"""
+                SELECT c.source_id, c.target_id, c.relation
+                FROM connections c
+                JOIN engrams a ON a.id = c.source_id
+                JOIN engrams b ON b.id = c.target_id
+                WHERE c.formed_at > ?
+                  AND a.state = 'active' AND b.state = 'active'
+                  AND a.owner_agent_id = ? AND b.owner_agent_id = ?
+                  AND COALESCE(json_extract(a.source, '$.type'), '') NOT IN ({placeholders})
+                  AND COALESCE(json_extract(b.source, '$.type'), '') NOT IN ({placeholders})
+                ORDER BY c.formed_at DESC
+                LIMIT 2
+            """, (self._living_cutoff_iso(),
+                  self.config.agent_id, self.config.agent_id,
+                  *self._INNER_SOURCE_TYPES, *self._INNER_SOURCE_TYPES)).fetchall()
+        except sqlite3.OperationalError as e:
+            log.debug(f"Fresh-connection notice skipped: {e}")
+            rows = []
+        finally:
+            conn.close()
+
+        for source_id, target_id, relation in rows:
+            events.append(SubstrateEvent(
+                event_type=EventType.CONNECTION_DISCOVERED,
+                payload={
+                    "from_engram_id": source_id,
+                    "to_engram_id": target_id,
+                    "connection_type": relation or "unknown",
+                },
+                source="living_notice",
+            ))
+        if events:
+            log.info(f"Living notice: {len(events)} fresh connection(s) offered to insight")
+        return events
+
+    def _check_fresh_surprises(self) -> list[SubstrateEvent]:
+        """Notice recent encodes the encoder itself marked surprising
+        (encoding_context.surprise_level, stamped at encode time during
+        normal chat) and offer them to the surprise handler. Only his own
+        active, lived memories — inner-life output is excluded, so one
+        violated expectation earns one reflection, never a chain."""
+        events: list[SubstrateEvent] = []
+        placeholders = ",".join("?" for _ in self._INNER_SOURCE_TYPES)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(f"""
+                SELECT id, json_extract(encoding_context, '$.surprise_level')
+                FROM engrams
+                WHERE state = 'active'
+                  AND owner_agent_id = ?
+                  AND created_at > ?
+                  AND COALESCE(json_extract(encoding_context, '$.surprise_level'), 0) > 0.3
+                  AND COALESCE(json_extract(source, '$.type'), '') NOT IN ({placeholders})
+                ORDER BY created_at DESC
+                LIMIT 2
+            """, (self.config.agent_id, self._living_cutoff_iso(),
+                  *self._INNER_SOURCE_TYPES)).fetchall()
+        except sqlite3.OperationalError as e:
+            log.debug(f"Fresh-surprise notice skipped: {e}")
+            rows = []
+        finally:
+            conn.close()
+
+        for engram_id, level in rows:
+            events.append(SubstrateEvent(
+                event_type=EventType.SURPRISE_DETECTED,
+                payload={"engram_id": engram_id,
+                         "surprise_score": float(level or 0)},
+                source="living_notice",
+            ))
+        if events:
+            log.info(f"Living notice: {len(events)} surprise trace(s) offered for reflection")
         return events
 
     def _check_belief_crossings(self) -> list[SubstrateEvent]:

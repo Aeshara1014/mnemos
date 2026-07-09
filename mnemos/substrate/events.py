@@ -28,6 +28,8 @@ class EventType(str, Enum):
 
     # Living events (produced by living-tick handlers to signal a real write)
     WANDERING_RECORDED = "wandering_recorded"  # A silence wander was actually encoded
+    INSIGHT_RECORDED = "insight_recorded"      # A connection insight was actually encoded
+    SURPRISE_RECORDED = "surprise_recorded"    # A surprise reflection was actually encoded
 
     # Accumulation events
     SALIENCE_ACCUMULATED = "salience_accumulated"  # Built-up unprocessed salience
