@@ -26,6 +26,9 @@ class EventType(str, Enum):
     # Temporal events
     SILENCE_EXTENDED = "silence_extended"      # Long gap since last memory formation
 
+    # Living events (produced by living-tick handlers to signal a real write)
+    WANDERING_RECORDED = "wandering_recorded"  # A silence wander was actually encoded
+
     # Accumulation events
     SALIENCE_ACCUMULATED = "salience_accumulated"  # Built-up unprocessed salience
 
