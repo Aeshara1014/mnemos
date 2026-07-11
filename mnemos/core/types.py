@@ -91,6 +91,7 @@ class SourceType(str, Enum):
     WANDERING = "wandering"      # From the living tick's silence-driven mind-wandering
     INSIGHT = "insight"          # From reflecting on a newly formed connection (living tick)
     SURPRISE = "surprise"        # From processing an encode-time surprise (living tick)
+    LETTER = "letter"            # From another member of the house (the hallway, DD-027)
     BROWSER_EXTRACTION = "browser_extraction"  # From Sovereign Mind browser extension
     EXTERNAL = "external"                        # From external ingestion pipeline
 
