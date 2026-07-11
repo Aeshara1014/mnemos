@@ -65,7 +65,7 @@ def handle(
         SELECT COUNT(*) FROM engrams
         WHERE state='active'
           AND json_extract(source, '$.type') = 'insight'
-          AND created_at > datetime('now', '-7 days')
+          AND datetime(created_at) > datetime('now', '-7 days')
     """).fetchone()[0]
     if insight_count >= config.max_insights_per_week:
         log.debug("Gate 1 (count): %d insights in last 7 days (max %d)",
@@ -100,7 +100,7 @@ def handle(
         SELECT content FROM engrams
         WHERE state='active'
           AND json_extract(source, '$.type') = 'insight'
-          AND created_at > datetime('now', '-30 days')
+          AND datetime(created_at) > datetime('now', '-30 days')
     """).fetchall():
         recent_hashes.add(_content_hash(content))
     conn.close()

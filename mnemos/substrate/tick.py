@@ -376,16 +376,25 @@ class Substrate:
         return events
 
     def _check_temporal(self, summary: dict) -> list[SubstrateEvent]:
-        """Check for temporal events like extended silence."""
+        """Check for temporal events like extended silence.
+
+        Silence is measured against LIVED memory only: the inner-life
+        sources are excluded, or the Observer's own whispers (every 2h at
+        the live cadence) keep resetting the clock on exactly the away-days
+        the wandering exists for — his first wander landed 7.5h late that
+        way (M4 braid #18)."""
         events: list[SubstrateEvent] = []
 
+        placeholders = ",".join("?" for _ in self._INNER_SOURCE_TYPES)
         conn = sqlite3.connect(self.db_path)
-        last_memory = conn.execute("""
+        last_memory = conn.execute(f"""
             SELECT created_at FROM engrams
             WHERE state = 'active'
+              AND COALESCE(json_extract(source, '$.type'), '')
+                  NOT IN ({placeholders})
             ORDER BY created_at DESC
             LIMIT 1
-        """).fetchone()
+        """, self._INNER_SOURCE_TYPES).fetchone()
         conn.close()
 
         if last_memory:
@@ -438,6 +447,7 @@ class Substrate:
                 JOIN engrams a ON a.id = c.source_id
                 JOIN engrams b ON b.id = c.target_id
                 WHERE c.formed_at > ?
+                  AND c.formed_by IN ('consolidation', 'consolidation_reclassified')
                   AND a.state = 'active' AND b.state = 'active'
                   AND a.owner_agent_id = ? AND b.owner_agent_id = ?
                   AND COALESCE(json_extract(a.source, '$.type'), '') NOT IN ({placeholders})

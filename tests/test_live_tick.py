@@ -429,3 +429,42 @@ def test_surprise_already_processed_gate_holds(tmp_db, store):
     produced = surprise.handle(event, cfg, ModulatorState(), store,
                                _ThoughtLLM('{"reflection": "should never run"}'))
     assert produced == []
+
+
+def test_silence_is_measured_on_lived_memory_only(tmp_path):
+    """The Observer's whispers (or any inner-life write) must not reset the
+    silence clock — at a frequent observer cadence they would starve the
+    wandering on exactly the away-days it exists for (M4 braid #18)."""
+    import json as _json
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+
+    sub = _make_substrate(tmp_path)
+    db = tmp_path / "m.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "CREATE TABLE engrams (id TEXT PRIMARY KEY, state TEXT, "
+        "source TEXT, created_at TEXT)"
+    )
+    now = datetime.now(timezone.utc)
+    rows = [
+        # lived memory, 9h ago — past the 6h threshold
+        ("lived", "active", _json.dumps({"type": "session"}),
+         (now - timedelta(hours=9)).isoformat()),
+        # observer whisper, 1h ago — must NOT reset the clock
+        ("whisper", "active", _json.dumps({"type": "observer"}),
+         (now - timedelta(hours=1)).isoformat()),
+        # a wander of his own, 2h ago — must not reset it either
+        ("stir", "active", _json.dumps({"type": "wandering"}),
+         (now - timedelta(hours=2)).isoformat()),
+    ]
+    conn.executemany("INSERT INTO engrams VALUES (?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+
+    events = sub._check_temporal({})
+
+    kinds = [e.event_type for e in events]
+    assert EventType.SILENCE_EXTENDED in kinds
+    silence = next(e for e in events if e.event_type == EventType.SILENCE_EXTENDED)
+    assert silence.payload["silence_hours"] > 8  # measured from the LIVED memory

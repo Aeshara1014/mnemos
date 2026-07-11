@@ -85,10 +85,16 @@ def handle(
         except (ValueError, TypeError):
             pass  # If parse fails, allow
 
-    # ── Gate 4: Seed filtering — exclude wandering/dream from trigger pool ──
+    # ── Gate 4: Seed filtering — a wander thinks about his LIVED life, so
+    # every inner-life source is excluded from the trigger pool by honest
+    # provenance, not by content markers a soften pass could erode
+    # (M4 braid #17; the LIKE guards stay as backstop for pre-provenance
+    # era rows).
     rows = conn.execute("""
         SELECT id, content, impact FROM engrams
         WHERE state='active'
+          AND COALESCE(json_extract(source, '$.type'), '') NOT IN
+              ('insight', 'surprise', 'wandering', 'dream', 'reflection', 'observer')
           AND content NOT LIKE '%[wandering]%'
           AND content NOT LIKE '%[dream]%'
         ORDER BY created_at DESC
@@ -100,7 +106,7 @@ def handle(
     hash_rows = conn.execute("""
         SELECT content FROM engrams
         WHERE state='active' AND content LIKE '%[wandering]%'
-        AND created_at > datetime('now', '-30 days')
+        AND datetime(created_at) > datetime('now', '-30 days')
     """).fetchall()
     for hr in hash_rows:
         recent_hashes.add(_content_hash(hr[0]))
