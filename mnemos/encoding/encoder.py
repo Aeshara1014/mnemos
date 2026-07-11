@@ -46,6 +46,12 @@ _CONFIDENCE_BY_SOURCE: dict[str, tuple[float, str]] = {
     SourceType.OBSERVER: (0.40, ConfidenceSource.MODEL_INFERRED),
     SourceType.DREAM: (0.30, ConfidenceSource.SPECULATIVE),
     SourceType.WANDERING: (0.35, ConfidenceSource.SPECULATIVE),
+    SourceType.INSIGHT: (0.45, ConfidenceSource.MODEL_INFERRED),
+    SourceType.SURPRISE: (0.40, ConfidenceSource.MODEL_INFERRED),
+    # A letter from a named member of the house: the receiving is certain,
+    # the content is the sender's word — more than a whisper, less than
+    # Tara's own conversation.
+    SourceType.LETTER: (0.65, ConfidenceSource.MODEL_INFERRED),
     SourceType.MERGE: (0.35, ConfidenceSource.SPECULATIVE),
     SourceType.BROWSER_EXTRACTION: (0.65, ConfidenceSource.USER_IMPLIED),
     SourceType.EXTERNAL: (0.55, ConfidenceSource.MODEL_INFERRED),
@@ -63,7 +69,10 @@ _PRIVATE_TAGS = frozenset({
 })
 
 # Source types that are internal processing and should stay private
-_PRIVATE_SOURCES = frozenset({SourceType.DREAM, SourceType.REFLECTION, SourceType.WANDERING})
+_PRIVATE_SOURCES = frozenset({
+    SourceType.DREAM, SourceType.REFLECTION, SourceType.WANDERING,
+    SourceType.INSIGHT, SourceType.SURPRISE,
+})
 
 
 def should_auto_share(engram: Engram) -> bool:
