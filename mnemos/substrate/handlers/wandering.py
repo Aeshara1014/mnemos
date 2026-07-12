@@ -94,7 +94,8 @@ def handle(
         SELECT id, content, impact FROM engrams
         WHERE state='active'
           AND COALESCE(json_extract(source, '$.type'), '') NOT IN
-              ('insight', 'surprise', 'wandering', 'dream', 'reflection', 'observer')
+              ('insight', 'surprise', 'wandering', 'dream', 'reflection',
+               'observer', 'doc_revision')
           AND content NOT LIKE '%[wandering]%'
           AND content NOT LIKE '%[dream]%'
         ORDER BY created_at DESC

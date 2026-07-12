@@ -415,9 +415,12 @@ class Substrate:
         return events
 
     # Inner-life source types a living notice must never feed on — reflecting
-    # on reflections is a hall of mirrors, not a mind.
+    # on reflections is a hall of mirrors, not a mind. doc_revision joined
+    # 2026-07-12 (DD-039 braid): a self-revision is self-work — it must not
+    # reset the silence clock or seed insights about his own identity pages.
     _INNER_SOURCE_TYPES = (
         "insight", "surprise", "wandering", "dream", "reflection", "observer",
+        "doc_revision",
     )
 
     def _living_cutoff_iso(self) -> str:

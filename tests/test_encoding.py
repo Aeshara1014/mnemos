@@ -68,3 +68,19 @@ class TestDocRevisionSource:
         from mnemos.encoding.encoder import _PRIVATE_SOURCES
 
         assert SourceType.DOC_REVISION in _PRIVATE_SOURCES
+
+    def test_doc_revision_never_feeds_the_living_organs(self):
+        """DD-039 braid: a self-revision is self-work. It must not seed
+        wanders (Gate 4), reset the silence clock or seed insights
+        (tick._INNER_SOURCE_TYPES), or seed beliefs (the self-echo loop:
+        page -> belief -> next week's material -> page)."""
+        import inspect
+
+        from mnemos.consolidation.belief_formation import _SUBSTRATE_SOURCES
+        from mnemos.substrate.handlers import wandering
+        from mnemos.substrate.tick import Substrate
+
+        assert "doc_revision" in Substrate._INNER_SOURCE_TYPES
+        assert "doc_revision" in _SUBSTRATE_SOURCES
+        # Gate 4's exclusion lives in SQL text — pin the provenance term.
+        assert "'doc_revision'" in inspect.getsource(wandering)

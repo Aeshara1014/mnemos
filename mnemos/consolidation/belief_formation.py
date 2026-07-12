@@ -46,7 +46,11 @@ log = logging.getLogger("mnemos.consolidation.belief_formation")
 # Sources that must never seed a belief — substrate talking to itself.
 # Stricter than belief_review's guard: dreams are also excluded here, because
 # forming a conviction from a dream is the substrate believing its own collisions.
-_SUBSTRATE_SOURCES = ("substrate", "reflection", "consolidation", "dream")
+# doc_revision joined 2026-07-12 (DD-039 braid): a belief seeded from his own
+# identity pages would close a self-echo loop — page → belief → next week's
+# doc-writer material → page.
+_SUBSTRATE_SOURCES = ("substrate", "reflection", "consolidation", "dream",
+                      "doc_revision")
 
 _SYSTEM_PROMPT = (
     "You are the memory consolidation substrate for an AI agent, running during "
