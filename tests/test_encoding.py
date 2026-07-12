@@ -44,3 +44,27 @@ class TestEncoder:
             f"Session confidence ({session_conf}) should exceed "
             f"reflection confidence ({reflection_conf})"
         )
+
+
+class TestDocRevisionSource:
+    """DD-039 (the doc-writer seam): revising one's own living docs is a
+    deliberate first-person act — surer than a letter received (0.65),
+    less than the user's explicit word, and private (self-work; the
+    revision itself is visible in the Soul room where it belongs)."""
+
+    def test_doc_revision_confidence_sits_between_letter_and_bootstrap(self, encoder):
+        revision = encoder.encode(
+            content="[revised self-model] I have been steadier than my fear said.",
+            source=SourceType.DOC_REVISION,
+        )
+        letter = encoder.encode(
+            content="[letter from cairn] hello",
+            source=SourceType.LETTER,
+        )
+        assert revision.source.confidence == 0.70
+        assert revision.source.confidence > letter.source.confidence
+
+    def test_doc_revision_stays_private(self):
+        from mnemos.encoding.encoder import _PRIVATE_SOURCES
+
+        assert SourceType.DOC_REVISION in _PRIVATE_SOURCES
