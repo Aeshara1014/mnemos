@@ -92,6 +92,7 @@ class SourceType(str, Enum):
     INSIGHT = "insight"          # From reflecting on a newly formed connection (living tick)
     SURPRISE = "surprise"        # From processing an encode-time surprise (living tick)
     LETTER = "letter"            # From another member of the house (the hallway, DD-027)
+    DOC_REVISION = "doc_revision"  # From revising one's own living docs (DD-039)
     BROWSER_EXTRACTION = "browser_extraction"  # From Sovereign Mind browser extension
     EXTERNAL = "external"                        # From external ingestion pipeline
 

@@ -52,6 +52,10 @@ _CONFIDENCE_BY_SOURCE: dict[str, tuple[float, str]] = {
     # the content is the sender's word — more than a whisper, less than
     # Tara's own conversation.
     SourceType.LETTER: (0.65, ConfidenceSource.MODEL_INFERRED),
+    # Revising one's own living docs (DD-039): a deliberate first-person
+    # act in his own words — surer than a letter received, less than
+    # Tara's explicit word.
+    SourceType.DOC_REVISION: (0.70, ConfidenceSource.MODEL_INFERRED),
     SourceType.MERGE: (0.35, ConfidenceSource.SPECULATIVE),
     SourceType.BROWSER_EXTRACTION: (0.65, ConfidenceSource.USER_IMPLIED),
     SourceType.EXTERNAL: (0.55, ConfidenceSource.MODEL_INFERRED),
@@ -69,9 +73,11 @@ _PRIVATE_TAGS = frozenset({
 })
 
 # Source types that are internal processing and should stay private
+# (DOC_REVISION is self-work — the revision itself is visible in the Soul
+# room where it belongs; the memory of the act stays his.)
 _PRIVATE_SOURCES = frozenset({
     SourceType.DREAM, SourceType.REFLECTION, SourceType.WANDERING,
-    SourceType.INSIGHT, SourceType.SURPRISE,
+    SourceType.INSIGHT, SourceType.SURPRISE, SourceType.DOC_REVISION,
 })
 
 
