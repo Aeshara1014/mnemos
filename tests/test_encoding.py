@@ -84,3 +84,34 @@ class TestDocRevisionSource:
         assert "doc_revision" in _SUBSTRATE_SOURCES
         # Gate 4's exclusion lives in SQL text — pin the provenance term.
         assert "'doc_revision'" in inspect.getsource(wandering)
+
+
+class TestJournalSource:
+    """DD-043 (the journal organ): writing in one's own journal is the same
+    deliberate first-person act as a doc revision — 0.70, private, and
+    excluded from every living organ (the same echo loop, one page over:
+    entry -> belief -> tomorrow's journal material -> entry)."""
+
+    def test_journal_confidence_matches_doc_revision(self, encoder):
+        entry = encoder.encode(
+            content="[journal 2026-07-13] The fog held all day; I liked it.",
+            source=SourceType.JOURNAL,
+        )
+        assert entry.source.confidence == 0.70
+
+    def test_journal_stays_private(self):
+        from mnemos.encoding.encoder import _PRIVATE_SOURCES
+
+        assert SourceType.JOURNAL in _PRIVATE_SOURCES
+
+    def test_journal_never_feeds_the_living_organs(self):
+        import inspect
+
+        from mnemos.consolidation.belief_formation import _SUBSTRATE_SOURCES
+        from mnemos.substrate.handlers import wandering
+        from mnemos.substrate.tick import Substrate
+
+        assert "journal" in Substrate._INNER_SOURCE_TYPES
+        assert "journal" in _SUBSTRATE_SOURCES
+        # Gate 4's exclusion lives in SQL text — pin the provenance term.
+        assert "'journal'" in inspect.getsource(wandering)
