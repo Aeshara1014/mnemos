@@ -95,7 +95,7 @@ def handle(
         WHERE state='active'
           AND COALESCE(json_extract(source, '$.type'), '') NOT IN
               ('insight', 'surprise', 'wandering', 'dream', 'reflection',
-               'observer', 'doc_revision')
+               'observer', 'doc_revision', 'journal')
           AND content NOT LIKE '%[wandering]%'
           AND content NOT LIKE '%[dream]%'
         ORDER BY created_at DESC

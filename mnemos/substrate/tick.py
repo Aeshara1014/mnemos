@@ -418,9 +418,11 @@ class Substrate:
     # on reflections is a hall of mirrors, not a mind. doc_revision joined
     # 2026-07-12 (DD-039 braid): a self-revision is self-work — it must not
     # reset the silence clock or seed insights about his own identity pages.
+    # journal joined 2026-07-13 (DD-043) for the same reason: a scheduled
+    # page of self-work is not lived experience arriving from outside.
     _INNER_SOURCE_TYPES = (
         "insight", "surprise", "wandering", "dream", "reflection", "observer",
-        "doc_revision",
+        "doc_revision", "journal",
     )
 
     def _living_cutoff_iso(self) -> str:

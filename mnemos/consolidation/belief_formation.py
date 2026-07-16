@@ -49,8 +49,10 @@ log = logging.getLogger("mnemos.consolidation.belief_formation")
 # doc_revision joined 2026-07-12 (DD-039 braid): a belief seeded from his own
 # identity pages would close a self-echo loop — page → belief → next week's
 # doc-writer material → page.
+# journal joined 2026-07-13 (DD-043): the same loop one page over —
+# entry -> belief -> tomorrow's journal material -> entry.
 _SUBSTRATE_SOURCES = ("substrate", "reflection", "consolidation", "dream",
-                      "doc_revision")
+                      "doc_revision", "journal")
 
 _SYSTEM_PROMPT = (
     "You are the memory consolidation substrate for an AI agent, running during "

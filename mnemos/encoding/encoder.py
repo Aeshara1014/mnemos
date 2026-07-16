@@ -56,6 +56,9 @@ _CONFIDENCE_BY_SOURCE: dict[str, tuple[float, str]] = {
     # act in his own words — surer than a letter received, less than
     # Tara's explicit word.
     SourceType.DOC_REVISION: (0.70, ConfidenceSource.MODEL_INFERRED),
+    # Writing in one's own journal (DD-043): the same deliberate
+    # first-person act as a doc revision — his day in his own words.
+    SourceType.JOURNAL: (0.70, ConfidenceSource.MODEL_INFERRED),
     SourceType.MERGE: (0.35, ConfidenceSource.SPECULATIVE),
     SourceType.BROWSER_EXTRACTION: (0.65, ConfidenceSource.USER_IMPLIED),
     SourceType.EXTERNAL: (0.55, ConfidenceSource.MODEL_INFERRED),
@@ -78,6 +81,7 @@ _PRIVATE_TAGS = frozenset({
 _PRIVATE_SOURCES = frozenset({
     SourceType.DREAM, SourceType.REFLECTION, SourceType.WANDERING,
     SourceType.INSIGHT, SourceType.SURPRISE, SourceType.DOC_REVISION,
+    SourceType.JOURNAL,
 })
 
 
