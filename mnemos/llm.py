@@ -184,26 +184,55 @@ class OpenRouterClient:
     Env var: OPENROUTER_API_KEY
     """
 
+    # A thinking model spends output tokens on hidden reasoning before the
+    # visible answer, and a Pro-tier model will not allow zero (Ollama's
+    # think=false has no analog here — reasoning:{enabled:false} is a 400).
+    # So we CAP reasoning low by default and reserve budget headroom so the
+    # visible output is never starved — max_tokens bounds reasoning+output
+    # COMBINED. Measured on gemini-3.1-pro-preview: ~700 reasoning tokens
+    # uncapped, floored ~330 at effort=low; a 120-token call with no cap
+    # returned only "Despite the".
+    _REASONING_HEADROOM = {"low": 512, "medium": 1024, "high": 2048}
+
     def __init__(
         self,
         api_key: str | None = None,
         model: str = "anthropic/claude-sonnet-4-6",
         max_tokens: int = 500,
+        reasoning_effort: str | None = "low",
     ) -> None:
         self._api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self._model = model
         self._max_tokens = max_tokens
+        # low|medium|high caps a thinking model's reasoning; None/"" sends
+        # no reasoning field and leaves it to the model's own default.
+        self._reasoning_effort = (reasoning_effort or "").strip().lower() or None
+
+    def _reasoning(self) -> dict | None:
+        """The reasoning control to send, or None to leave it to the model."""
+        return {"effort": self._reasoning_effort} if self._reasoning_effort else None
+
+    def _budget(self, max_tokens: int) -> int:
+        """max_tokens with headroom reserved for the reasoning tax, so the
+        visible answer is never starved (reasoning counts toward the cap)."""
+        if not self._reasoning_effort:
+            return max_tokens
+        return max_tokens + self._REASONING_HEADROOM.get(self._reasoning_effort, 1024)
 
     def complete(self, prompt: str) -> str:
         """Send a prompt via OpenRouter and return the response text."""
         import json
         import urllib.request
 
-        body = json.dumps({
+        payload = {
             "model": self._model,
-            "max_tokens": self._max_tokens,
+            "max_tokens": self._budget(self._max_tokens),
             "messages": [{"role": "user", "content": prompt}],
-        }).encode()
+        }
+        reasoning = self._reasoning()
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
+        body = json.dumps(payload).encode()
 
         req = urllib.request.Request(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -228,15 +257,19 @@ class OpenRouterClient:
         import json
         import urllib.request
 
-        body = json.dumps({
+        payload = {
             "model": self._model,
-            "max_tokens": max_tokens,
+            "max_tokens": self._budget(max_tokens),
             "temperature": temperature,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-        }).encode()
+        }
+        reasoning = self._reasoning()
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
+        body = json.dumps(payload).encode()
 
         req = urllib.request.Request(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -461,6 +494,18 @@ def resolve_affinity_status(
     }
 
 
+def _reasoning_effort_from_env() -> str:
+    """The substrate reasoning cap for OpenRouter (env, then .env), default
+    low. Read on EVERY OpenRouter construction path so a set
+    MNEMOS_REASONING_EFFORT is never silently ignored — the same 'a believed
+    setting that never took effect' failure the keeper's parse_agent
+    validation guards against on its side."""
+    effort = os.environ.get("MNEMOS_REASONING_EFFORT", "").strip().lower()
+    if not effort:
+        effort = _load_env_key("MNEMOS_REASONING_EFFORT").strip().lower()
+    return effort or "low"
+
+
 def _create_client_unchecked() -> "LLMClient | None":
     """Resolve provider/model from environment without the affinity gate."""
     # Check for model override (env var or .env file)
@@ -536,6 +581,7 @@ def _create_client_unchecked() -> "LLMClient | None":
             return OpenRouterClient(
                 api_key=key,
                 model=model_override or "anthropic/claude-sonnet-4-5",
+                reasoning_effort=_reasoning_effort_from_env(),
             )
         logger.warning(
             "MNEMOS_LLM_PROVIDER=openrouter but no OpenRouter key was found; "
@@ -577,7 +623,10 @@ def _create_client_unchecked() -> "LLMClient | None":
 
     openrouter_key = _load_env_key("OPENROUTER_API_KEY")
     if openrouter_key:
-        return OpenRouterClient(api_key=openrouter_key)
+        return OpenRouterClient(
+            api_key=openrouter_key,
+            reasoning_effort=_reasoning_effort_from_env(),
+        )
 
     openai_key = _load_env_key("OPENAI_API_KEY")
     if openai_key:
