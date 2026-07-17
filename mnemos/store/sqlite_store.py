@@ -24,6 +24,7 @@ from ..core.engram import Connection, Engram, VersionRef
 from ..core.belief import Belief
 from ..core.emotional_state import EmotionalState
 from ..core.identity import AgentIdentity
+from .migrations import get_current_version, list_migrations, run_migrations
 
 
 # Schema version — increment when tables change
@@ -356,20 +357,67 @@ class EngramStore:
         self._init_db()
 
     def _init_db(self) -> None:
-        """Initialize database with schema."""
+        """Initialize or upgrade the database schema.
+
+        Three doors, one truth — the version stamp only ever advances
+        honestly:
+
+        - Fresh store: built whole from SQL_CREATE_TABLES, born at
+          SCHEMA_VERSION, stamped as such. No migrations to run.
+        - Existing un-versioned store (or one restored from a bundle old
+          enough to predate stamping): SQL_CREATE_TABLES heals structure
+          additively (IF NOT EXISTS), then the store adopts versioning at
+          SCHEMA_VERSION — a one-time adoption stamp, true because the
+          script just made the structure current.
+        - Existing versioned store: structure healed additively as above,
+          then registered migrations carry it from its recorded version to
+          SCHEMA_VERSION, stamping per-step inside the runner. A missing
+          migration (version bumped, migration never registered) or a
+          store from a newer build fails LOUDLY here at open — never a
+          silent wrong-version stamp.
+
+        Because structure is healed additively before migrations run,
+        registered migrations must tolerate already-current structure
+        (guard ALTERs by column presence, use IF NOT EXISTS for tables).
+        """
+        latest_registered = max(
+            (m["version"] for m in list_migrations()), default=0
+        )
+        if latest_registered > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"migration v{latest_registered} is registered beyond "
+                f"SCHEMA_VERSION={SCHEMA_VERSION}; bump SCHEMA_VERSION in "
+                "sqlite_store.py to match the newest migration"
+            )
+
         conn = self._get_conn()
+        fresh = (
+            conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'engrams'"
+            ).fetchone()
+            is None
+        )
         conn.executescript(SQL_CREATE_TABLES)
-        # Migrate: add impact column if missing (v0.1 → v0.2)
+        # Legacy pre-versioning column add (v0.1 → v0.2), kept because
+        # bundles that old can still be restored onto this code.
         try:
             conn.execute("ALTER TABLE engrams ADD COLUMN impact TEXT NOT NULL DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # Column already exists
-        # Set schema version
-        conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-            ("schema_version", str(SCHEMA_VERSION)),
-        )
         conn.commit()
+
+        if fresh or get_current_version(conn) == 0:
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                ("schema_version", str(SCHEMA_VERSION)),
+            )
+            conn.commit()
+            return
+
+        # The runner owns every stamp from here: applies pending
+        # migrations in order, or refuses loudly (missing migration /
+        # store from the future — restore a backup to go back).
+        run_migrations(conn, target_version=SCHEMA_VERSION)
 
     def _get_conn(self) -> sqlite3.Connection:
         """Get or create SQLite connection with WAL mode."""
