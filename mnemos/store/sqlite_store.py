@@ -1405,8 +1405,16 @@ class EngramStore:
         project_scope: str = "global",
         confidence: float | None = None,
         salience: float | None = None,
+        tags: str | list[str] | tuple[str, ...] | None = None,
     ) -> str:
-        """Revise an existing hypomnema entry while preserving the old version."""
+        """Revise an existing hypomnema entry while preserving the old version.
+
+        tags=None keeps the entry's current tags (the long-standing behavior);
+        a value replaces them, normalized exactly as write_hypomnema_entry
+        normalizes a first write. A caller that deepens one entry across many
+        revisions can pass the union of old and new tags, so the labels follow
+        the content instead of freezing at the first write.
+        """
         if not new_content.strip():
             raise ValueError("Revised hypomnema content cannot be empty")
         if not reason.strip():
@@ -1438,6 +1446,7 @@ class EngramStore:
             SET content = ?,
                 confidence = ?,
                 salience = ?,
+                tags_json = ?,
                 revision_count = revision_count + 1,
                 revisions_json = ?,
                 last_revised_at = ?
@@ -1447,6 +1456,8 @@ class EngramStore:
                 new_content.strip(),
                 _clamp(confidence if confidence is not None else row["confidence"]),
                 _clamp(salience if salience is not None else row["salience"]),
+                (_encode_json(_split_tags(tags)) if tags is not None
+                 else row["tags_json"]),
                 _encode_json(revisions),
                 now,
                 entry_id,

@@ -67,6 +67,33 @@ class TestHypomnemaStore:
         assert entry["confidence"] == pytest.approx(0.85)
         assert entry["revisions"][0]["prior_content"] == "Hypomnema is just a note."
 
+    def test_revise_hypomnema_tags_kept_by_default_replaced_when_given(self, store):
+        """tags=None keeps the entry's tags (the long-standing behavior);
+        a value replaces them, normalized like a first write — so a caller
+        deepening one entry across revisions can carry the union forward
+        instead of freezing the labels at day one."""
+        scope = dict(agent_id="vektor", person_id="riley", project_scope="codex-test")
+        entry_id = store.write_hypomnema_entry(
+            "Hypomnema is just a note.", tags=["memory", "continuity"], **scope
+        )
+
+        store.revise_hypomnema_entry(
+            entry_id, "Sharpened, same labels.", reason="no tag change", **scope
+        )
+        entry = store.get_hypomnema_entry(entry_id, **scope)
+        assert entry["tags"] == ["memory", "continuity"]
+
+        store.revise_hypomnema_entry(
+            entry_id,
+            "Deepened — the arc grew a new anchor.",
+            reason="carry the union forward",
+            tags=["memory", "continuity", " trust "],  # normalized like a write
+            **scope,
+        )
+        entry = store.get_hypomnema_entry(entry_id, **scope)
+        assert entry["tags"] == ["memory", "continuity", "trust"]
+        assert entry["revision_count"] == 2
+
     def test_supersede_hypomnema_hides_original_from_active_search(self, store):
         entry_id = store.write_hypomnema_entry(
             "Old continuity claim",
