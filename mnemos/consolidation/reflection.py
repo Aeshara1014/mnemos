@@ -68,7 +68,16 @@ def run_reflection_pass(
         identity: Agent identity (epoch_state.self_summary will be updated).
         emotional_state: Current emotional state.
         llm_client: LLM client with complete(prompt) -> str. None = template fallback.
-        config: Optional config dict.
+        config: Optional config dict. Two ways to say what "recent" means:
+            - default: the wall clock — engrams whose created_at falls in
+              the last reflection_lookback_hours (24);
+            - config["reflection_window"] = {"since": iso, "until": iso} —
+              an explicit created_at range. This is the replayed-day seam:
+              a reintegration replay hands the day it just dreamed, so the
+              vessel of the day reflects on the day even though the stamps
+              are months old. The thoughts it generates are encoded NOW,
+              as always — two layers of time, both true. A malformed
+              window raises rather than silently reflecting on nothing.
 
     Returns:
         Statistics dict.
@@ -76,6 +85,7 @@ def run_reflection_pass(
     config = config or {}
     lookback_hours = config.get("reflection_lookback_hours", 24)
     max_thoughts = config.get("max_thoughts_per_pass", 5)
+    window = config.get("reflection_window")
     agent_id = identity.memory_profile.agent_id
 
     stats = {
@@ -87,10 +97,24 @@ def run_reflection_pass(
 
     # 1. LOAD RECENT ENGRAMS
     all_engrams = store.get_active_engrams(agent_id=agent_id, limit=200)
-    recent = [
-        e for e in all_engrams
-        if _hours_since(e.created_at) < lookback_hours
-    ]
+    if window is not None:
+        since = _parse_iso(window.get("since") if isinstance(window, dict) else None)
+        until = _parse_iso(window.get("until") if isinstance(window, dict) else None)
+        if since is None or until is None:
+            raise ValueError(
+                "reflection_window needs ISO 'since' and 'until' "
+                f"(got {window!r}) — refusing to reflect on a malformed day"
+            )
+        recent = []
+        for e in all_engrams:
+            ts = _parse_iso(e.created_at)
+            if ts is not None and since <= ts < until:
+                recent.append(e)
+    else:
+        recent = [
+            e for e in all_engrams
+            if _hours_since(e.created_at) < lookback_hours
+        ]
 
     stats["engrams_reviewed"] = len(recent)
 
@@ -275,3 +299,17 @@ def _hours_since(iso_timestamp: str) -> float:
         return max(0.0, (now - then).total_seconds() / 3600)
     except (ValueError, TypeError):
         return 0.0
+
+
+def _parse_iso(iso_timestamp: Any) -> datetime | None:
+    """A tolerant ISO parse (naive = UTC, 'Z' accepted), None when it
+    is not a timestamp — the same posture as _hours_since."""
+    if not isinstance(iso_timestamp, str) or not iso_timestamp:
+        return None
+    try:
+        then = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    return then

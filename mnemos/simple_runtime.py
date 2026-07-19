@@ -886,8 +886,14 @@ class MnemosRuntime:
             importance="high",
         )
 
-    def maintain(self, deep: bool = False, auto: bool = False) -> str:
-        """Run the best available maintenance without requiring setup."""
+    def maintain(self, deep: bool = False, auto: bool = False,
+                 consolidation_config: dict | None = None) -> str:
+        """Run the best available maintenance without requiring setup.
+
+        consolidation_config, when given, rides to the daemon verbatim —
+        e.g. {"reflection_window": {"since": iso, "until": iso}} scopes the
+        reflection pass to a stamped day (the reintegration replay's seam).
+        None keeps every pass on its defaults, byte-identical to before."""
 
         self._ensure_init()
         assert self._store is not None
@@ -896,7 +902,7 @@ class MnemosRuntime:
         can_run_deep = requested_deep and self._llm_client is not None
         daemon = ConsolidationDaemon(
             store=self._store,
-            config={},
+            config=consolidation_config or {},
             llm_client=self._llm_client if can_run_deep else None,
             embedding_index=self._embedding_index,
             agent_model_hint=self._agent_model_hint,
