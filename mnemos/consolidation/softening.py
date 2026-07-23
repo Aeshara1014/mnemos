@@ -187,9 +187,17 @@ def run_softening_pass(
 
         # SHIFT 2: Create or reinforce a lesson engram from the impact.
         # Forgetting feeds forward — the distilled insight becomes persistent wisdom.
+        # The goodnight-lesson law (2026-07-22): only a REAL distillation may
+        # mint a lesson. A fallback or echoed impact still rides the engram
+        # (best available), but it is not wisdom and must not persist as one.
         lesson_id = None
-        if engram.impact:
+        if engram.impact and _is_real_distillation(
+            engram.impact, engram.content,
+            getattr(engram, "content_at_encoding", "") or "",
+        ):
             lesson_id = _create_or_reinforce_lesson(engram, store, stats)
+        elif engram.impact:
+            stats["lessons_withheld"] = stats.get("lessons_withheld", 0) + 1
 
         # SOFTEN content (impact is preserved separately)
         if llm_client and stats["llm_calls"] < max_llm_calls:
@@ -371,6 +379,27 @@ def _extract_impact(content: str, llm_client: Any) -> str:
         return result.strip() if result else _rule_based_impact(content)
     except Exception:
         return _rule_based_impact(content)
+
+
+def _is_real_distillation(impact: str, *texts: str) -> bool:
+    """A lesson may only be born from a real distillation.
+
+    The goodnight-lesson law (2026-07-22): an impact that is just a line
+    lifted from the memory itself — the rule-based fallback's last
+    sentence, or an LLM echoing a quote — is not insight, and minting it
+    as a high-stability lesson immortalizes sign-offs ("Goodnight, my
+    heart") as wisdom. A real distillation is NEW prose about the memory,
+    not prose OF it. Checked against every provided text (current content
+    AND the sharp content_at_encoding, so an impact extracted by the old
+    fallback in an earlier cycle can never mint a lesson later, after the
+    content it was lifted from has blurred away)."""
+    if not impact or len(impact.strip()) < 10:
+        return False
+    norm = " ".join(impact.lower().split())
+    for text in texts:
+        if text and norm in " ".join(text.lower().split()):
+            return False
+    return True
 
 
 def _rule_based_impact(content: str) -> str:
