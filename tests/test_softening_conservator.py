@@ -173,6 +173,31 @@ def test_rule_based_path_also_conserved(store, seeded):
     assert len(softened.content) <= len(seeded["fading"].content_at_encoding)
 
 
+def test_starved_budget_defers_rather_than_blurs(store, seeded):
+    """Defer, don't butcher (2026-07-22): when a client exists but the
+    cycle's budget cannot cover an engram, the memory waits sharp for the
+    next cycle — it is never handed to the crude fallback. (A client-less
+    runtime still takes the rule-based path: the test above.)"""
+    second = _engram(
+        AGENT_A,
+        "another long afternoon of lens work, the calibration finally held "
+        "steady through every pass and i wrote down why",
+        accessibility=0.45,
+    )
+    store.save_engram(second)
+    stub = StubLLM("a steady hand and a written why outlast the afternoon")
+    stats = run_softening_pass(
+        store, {"max_llm_calls_per_cycle": 1}, stub, agent_id=AGENT_A)
+    assert stats["engrams_softened"] == 1
+    assert stats["softening_deferred"] == 1
+    assert stats["llm_calls"] == 1
+    survivors = [store.get_engram(seeded["fading"].id),
+                 store.get_engram(second.id)]
+    untouched = [e for e in survivors if e.resolution == 1.0]
+    assert len(untouched) == 1
+    assert "[details faded]" not in untouched[0].content
+
+
 def test_tiny_memory_keeps_original_rather_than_inflating(store):
     tiny = _engram(AGENT_A, "ok then.", accessibility=0.01)
     store.save_engram(tiny)

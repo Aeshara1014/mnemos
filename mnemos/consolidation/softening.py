@@ -175,11 +175,22 @@ def run_softening_pass(
             total_res_after += engram.resolution
             continue
 
+        # Defer, don't butcher (2026-07-22): when a client exists but the
+        # cycle's budget can't cover this engram (impact + soften), the
+        # memory simply WAITS, sharp, for the next cycle's fresh budget —
+        # it is never handed to the crude fallback. The rule-based paths
+        # below remain the honest mode for a client-less runtime only.
+        needed = 1 if engram.impact else 2
+        if llm_client and stats["llm_calls"] + needed > max_llm_calls:
+            stats["softening_deferred"] = stats.get("softening_deferred", 0) + 1
+            total_res_after += engram.resolution
+            continue
+
         # EXTRACT IMPACT before softening (if not already set)
         # This is the key Shift 1 behavior: before content gets compressed,
         # extract the lasting insight. Impact survives even when content fades.
         if not engram.impact:
-            if llm_client and stats["llm_calls"] < max_llm_calls:
+            if llm_client:
                 engram.impact = _extract_impact(engram.content, llm_client)
                 stats["llm_calls"] += 1
             else:
@@ -200,7 +211,7 @@ def run_softening_pass(
             stats["lessons_withheld"] = stats.get("lessons_withheld", 0) + 1
 
         # SOFTEN content (impact is preserved separately)
-        if llm_client and stats["llm_calls"] < max_llm_calls:
+        if llm_client:
             candidate = _llm_soften(
                 engram.content, engram.resolution, target, llm_client,
                 exemplars_block,
