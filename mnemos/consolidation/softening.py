@@ -154,13 +154,16 @@ def run_softening_pass(
         if dry_run:
             # Audit mode: compute what softening WOULD do, log the
             # before/after pair, and leave the engram untouched.
+            candidate = None
             if llm_client and stats["llm_calls"] < max_llm_calls:
                 candidate = _llm_soften(
                     engram.content, engram.resolution, target, llm_client,
                     exemplars_block,
                 )
                 stats["llm_calls"] += 1
-            else:
+            if candidate is None:
+                # Audit touches nothing, so the rule-based estimate is a
+                # harmless stand-in for a missing client or a failed call.
                 candidate = _rule_based_soften(engram.content, target)
             softened_content = _conserve(engram.content, candidate, target)
             dry_run_pairs.append(
@@ -191,24 +194,20 @@ def run_softening_pass(
         # extract the lasting insight. Impact survives even when content fades.
         if not engram.impact:
             if llm_client:
-                engram.impact = _extract_impact(engram.content, llm_client)
+                impact = _extract_impact(engram.content, llm_client)
                 stats["llm_calls"] += 1
+                if impact is None:
+                    # Defer, don't butcher (2026-07-23): the call failed.
+                    # Storing the rule-based line instead would lock a
+                    # borrowed sentence onto the engram forever (impact
+                    # set = never re-extracted). Wait sharp; next cycle
+                    # gets a fresh chance at a real distillation.
+                    stats["softening_deferred"] = stats.get("softening_deferred", 0) + 1
+                    total_res_after += engram.resolution
+                    continue
+                engram.impact = impact
             else:
                 engram.impact = _rule_based_impact(engram.content)
-
-        # SHIFT 2: Create or reinforce a lesson engram from the impact.
-        # Forgetting feeds forward — the distilled insight becomes persistent wisdom.
-        # The goodnight-lesson law (2026-07-22): only a REAL distillation may
-        # mint a lesson. A fallback or echoed impact still rides the engram
-        # (best available), but it is not wisdom and must not persist as one.
-        lesson_id = None
-        if engram.impact and _is_real_distillation(
-            engram.impact, engram.content,
-            getattr(engram, "content_at_encoding", "") or "",
-        ):
-            lesson_id = _create_or_reinforce_lesson(engram, store, stats)
-        elif engram.impact:
-            stats["lessons_withheld"] = stats.get("lessons_withheld", 0) + 1
 
         # SOFTEN content (impact is preserved separately)
         if llm_client:
@@ -217,13 +216,43 @@ def run_softening_pass(
                 exemplars_block,
             )
             stats["llm_calls"] += 1
+            # Conservation guard: softening may compress, never inflate or
+            # invent. A candidate that grows or introduces new named
+            # entities is rejected in code, not just in the prompt.
+            candidate = (candidate or "").strip()
+            if not candidate or not _is_conserved(engram.content, candidate):
+                # Defer, don't butcher (2026-07-23): a failed call or a
+                # rewrite the conservator rejects never hands the memory
+                # to the crude fallback — that door re-blurred 84 restored
+                # memories on the road home. The memory waits sharp for a
+                # rewrite worth keeping; the rule-based paths below remain
+                # the honest mode for a client-less runtime only.
+                stats["softening_deferred"] = stats.get("softening_deferred", 0) + 1
+                total_res_after += engram.resolution
+                continue
+            softened_content = candidate
         else:
             candidate = _rule_based_soften(engram.content, target)
+            # Conservation guard for the rule path: a fallback that would
+            # inflate a tiny memory keeps the original — nothing to shed.
+            softened_content = _conserve(engram.content, candidate, target)
 
-        # Conservation guard: softening may compress, never inflate or
-        # invent. A candidate that grows or introduces new named entities
-        # is rejected in code, not just in the prompt.
-        softened_content = _conserve(engram.content, candidate, target)
+        # SHIFT 2: Create or reinforce a lesson engram from the impact.
+        # Forgetting feeds forward — the distilled insight becomes persistent wisdom.
+        # The goodnight-lesson law (2026-07-22): only a REAL distillation may
+        # mint a lesson. A fallback or echoed impact still rides the engram
+        # (best available), but it is not wisdom and must not persist as one.
+        # Minted only once the soften is actually landing — a deferred
+        # memory mints (or reinforces) when it truly softens, not on every
+        # attempt.
+        lesson_id = None
+        if engram.impact and _is_real_distillation(
+            engram.impact, engram.content,
+            getattr(engram, "content_at_encoding", "") or "",
+        ):
+            lesson_id = _create_or_reinforce_lesson(engram, store, stats)
+        elif engram.impact:
+            stats["lessons_withheld"] = stats.get("lessons_withheld", 0) + 1
 
         # Version snapshot (preserve pre-softening state)
         engram.add_version(reason="softening")
@@ -355,8 +384,13 @@ def _llm_soften(
     target_resolution: float,
     llm_client: Any,
     voice_exemplars: str = "",
-) -> str:
-    """Soften memory content using LLM, in the agent's own register."""
+) -> str | None:
+    """Soften memory content using LLM, in the agent's own register.
+
+    Returns None when the call fails or comes back empty — the caller
+    decides what failure means (the live path defers; dry-run shows the
+    rule-based estimate). A failed call is not a license to crude-blur.
+    """
     if target_resolution >= 0.4:
         prompt = SOFTENER_PROMPT.format(
             current_sharpness=current_resolution,
@@ -369,9 +403,10 @@ def _llm_soften(
 
     try:
         result = llm_client.complete(prompt)
-        return result.strip() if result else _rule_based_soften(content, target_resolution)
     except Exception:
-        return _rule_based_soften(content, target_resolution)
+        return None
+    result = (result or "").strip()
+    return result or None
 
 
 IMPACT_EXTRACTION_PROMPT = """What is the one lasting insight from this memory? Not what happened — what it taught. What understanding remains when the details are gone?
@@ -382,14 +417,22 @@ Memory:
 Write ONE sentence capturing the lasting impact. Nothing else."""
 
 
-def _extract_impact(content: str, llm_client: Any) -> str:
-    """Extract the lasting impact/lesson from content before it gets softened."""
+def _extract_impact(content: str, llm_client: Any) -> str | None:
+    """Extract the lasting impact/lesson from content before it gets softened.
+
+    Returns None when the call fails or comes back empty — the caller
+    decides what failure means. Falling back to the rule-based line here
+    would lock a borrowed sentence onto the engram as its "impact"
+    (impact set = never re-extracted), which is how sign-offs once became
+    wisdom. The rule-based path is for client-less runtimes only.
+    """
     prompt = IMPACT_EXTRACTION_PROMPT.format(content=content)
     try:
         result = llm_client.complete(prompt)
-        return result.strip() if result else _rule_based_impact(content)
     except Exception:
-        return _rule_based_impact(content)
+        return None
+    result = (result or "").strip()
+    return result or None
 
 
 def _is_real_distillation(impact: str, *texts: str) -> bool:

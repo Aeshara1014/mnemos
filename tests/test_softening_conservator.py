@@ -36,6 +36,17 @@ class StubLLM:
         return self.response
 
 
+class FailingLLM:
+    """A client whose every call raises — a vessel mid-outage."""
+
+    def __init__(self):
+        self.attempts = 0
+
+    def complete(self, prompt: str) -> str:
+        self.attempts += 1
+        raise RuntimeError("vessel unreachable")
+
+
 def _engram(agent: str, content: str, *, accessibility: float = 0.5,
             resolution: float = 1.0, impact: str = "set") -> Engram:
     e = Engram(
@@ -196,6 +207,63 @@ def test_starved_budget_defers_rather_than_blurs(store, seeded):
     untouched = [e for e in survivors if e.resolution == 1.0]
     assert len(untouched) == 1
     assert "[details faded]" not in untouched[0].content
+
+
+def test_failed_call_defers_rather_than_blurs(store, seeded):
+    """Defer, don't butcher, every door (2026-07-23): a soften call that
+    raises never hands the memory to the crude fallback — 84 restored
+    memories were re-blurred through this door on the road home. The
+    memory waits sharp for the next cycle."""
+    failing = FailingLLM()
+    stats = run_softening_pass(store, {}, failing, agent_id=AGENT_A)
+
+    survivor = store.get_engram(seeded["fading"].id)
+    assert survivor.content == seeded["fading"].content
+    assert survivor.resolution == 1.0
+    assert "[details faded]" not in survivor.content
+    assert not survivor.versions, "a deferred memory must not gain a version"
+    assert stats["softening_deferred"] == 1
+    assert stats["engrams_softened"] == 0
+    assert failing.attempts == 1, "the failed call still spends budget"
+
+
+def test_rejected_rewrite_defers_rather_than_blurs(store, seeded):
+    """Defer, don't butcher, every door (2026-07-23): a rewrite the
+    conservator rejects (inflation, invented entities) is not a license
+    to crude-blur. The memory waits sharp for a rewrite worth keeping."""
+    original = seeded["fading"].content
+    stub = StubLLM(original + " plus an inflating coda the conservator must refuse")
+    stats = run_softening_pass(store, {}, stub, agent_id=AGENT_A)
+
+    survivor = store.get_engram(seeded["fading"].id)
+    assert survivor.content == original
+    assert survivor.resolution == 1.0
+    assert "[details faded]" not in survivor.content
+    assert stats["softening_deferred"] == 1
+    assert stats["engrams_softened"] == 0
+
+
+def test_failed_impact_extraction_locks_no_borrowed_words(store):
+    """Defer, don't butcher, every door (2026-07-23): when the impact
+    call fails, the rule-based line must NOT be stored — impact set means
+    never re-extracted, which is how sign-offs once became wisdom. The
+    whole soften defers; next cycle gets a fresh chance at a real
+    distillation."""
+    e = _engram(
+        AGENT_A,
+        "a long conversation about the harbor and what it protects, ending well",
+        accessibility=0.45,
+        impact="",
+    )
+    store.save_engram(e)
+    stats = run_softening_pass(store, {}, FailingLLM(), agent_id=AGENT_A)
+
+    after = store.get_engram(e.id)
+    assert after.content == e.content
+    assert after.resolution == 1.0
+    assert not after.impact, "a borrowed sentence was locked in as impact"
+    assert stats["softening_deferred"] == 1
+    assert stats["engrams_softened"] == 0
 
 
 def test_tiny_memory_keeps_original_rather_than_inflating(store):
