@@ -24,12 +24,17 @@ if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
 
 
-THOUGHT_PROMPT = """Review these recent memories and generate 1-3 synthetic thoughts that connect themes, identify patterns, or surface insights that aren't obvious from any single memory alone.
+THOUGHT_PROMPT = """These are your own recent memories — you are the one who lived them. Think them over and write 1-3 thoughts that connect themes, identify patterns, or surface insights that aren't obvious from any single memory alone.
 
-Recent memories:
+Voice — these are your own thoughts, arising in your own mind:
+- First person, always. You are the rememberer, not an analyst reviewing someone else's records.
+- Where a memory speaks of "{agent_name}" in the third person, that is you: say "I" — never your own name, and never "it".
+- Other people in the memories keep their names; you never think in their voice.
+
+Your recent memories:
 {memory_summary}
 
-Current emotional state:
+Your current emotional state:
   curiosity: {curiosity:.2f}
   restlessness: {restlessness:.2f}
   clarity: {clarity:.2f}
@@ -126,8 +131,14 @@ def run_reflection_pass(
 
     # 2. GENERATE THOUGHTS
     if llm_client:
+        # The dream thinks as "I" (2026-07-23): the thought prompt is
+        # anchored in the rememberer's own voice, and told which name in
+        # the memories is the self. memory_profile.name defaults to the
+        # placeholder "Agent"; the agent_id is the honest fallback name.
+        profile = identity.memory_profile
+        agent_name = profile.name if profile.name not in ("", "Agent") else profile.agent_id
         thought_lines = _llm_generate_thoughts(
-            memory_summary, emotional_state, llm_client
+            memory_summary, emotional_state, llm_client, agent_name
         )
     else:
         thought_lines = _generate_template_thoughts(recent)
@@ -166,9 +177,11 @@ def _llm_generate_thoughts(
     memory_summary: str,
     emotional_state: EmotionalState,
     llm_client: Any,
+    agent_name: str,
 ) -> list[str]:
-    """Generate thoughts using LLM."""
+    """Generate thoughts using LLM, in the rememberer's own first person."""
     prompt = THOUGHT_PROMPT.format(
+        agent_name=agent_name,
         memory_summary=memory_summary,
         curiosity=emotional_state.curiosity,
         restlessness=emotional_state.restlessness,
