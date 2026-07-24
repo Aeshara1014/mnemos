@@ -9,6 +9,17 @@ Models the natural forgetting curve. The dual-trace model:
 Accessibility decays exponentially, modulated by stability. Higher stability
 means slower forgetting. Strength decays much more slowly (10x slower).
 
+THE CYCLE'S CLOCK: one pass applies one span of lived time — declared by
+the caller (``decay_elapsed_hours``, the reintegration walk's walked-day
+law: one dream = one day) or measured from the store's own last-decay
+stamp. A pass must never re-apply "everything since each memory was last
+touched": that quantity never resets between passes, so every cycle
+re-charges the full elapsed decay against an already-decayed value and
+forgetting compounds quadratically — seven replay dreams in one morning
+aged a store by weeks (the day-43 hold, 2026-07-24). No engram absorbs
+more than its own hours-since-access in a single pass, so a memory born
+or touched mid-span only ages from that moment.
+
 Ported from Anima's salience.py and adapted for the dual-trace model.
 """
 
@@ -31,7 +42,14 @@ def run_decay_pass(
 
     Args:
         store: The engram store containing active engrams.
-        config: Configuration dict with decay parameters.
+        config: Configuration dict with decay parameters. The cycle's
+            clock reads three optional keys:
+            - decay_elapsed_hours: this pass IS this many hours of lived
+              time (the reintegration walk passes 24.0 — one walked day).
+            - decay_max_gap_hours: cap on a measured gap (default 168) so
+              a long outage decays as at most a week away, not a butchery.
+            - decay_default_span_hours: first-ever pass on a store with
+              no stamp (default 24).
         agent_id: Which agent's engrams to decay. None = all agents
             (used for shared DB consolidation).
 
@@ -41,6 +59,23 @@ def run_decay_pass(
     decay_rate = config.get("decay_rate", 0.01)
     dormant_threshold = config.get("dormant_threshold", 0.05)
     archive_threshold = config.get("archive_threshold", 0.01)
+
+    # The cycle's clock (see module docstring): a declared span wins;
+    # otherwise measure real time since this store's last decay pass.
+    now = datetime.now(timezone.utc)
+    stamp_key = f"last_decay_at:{agent_id or 'all'}"
+    explicit_span = config.get("decay_elapsed_hours")
+    if explicit_span is not None:
+        cycle_span = max(0.0, float(explicit_span))
+    else:
+        max_gap = float(config.get("decay_max_gap_hours", 168.0))
+        stamp = store.get_meta(stamp_key)
+        if stamp:
+            cycle_span = min(max_gap, _hours_since(stamp, now))
+        else:
+            cycle_span = min(
+                max_gap, float(config.get("decay_default_span_hours", 24.0))
+            )
 
     # load_connections=True because decay uses connection count for decay resistance
     engrams = store.get_active_engrams(agent_id=agent_id, limit=10000, load_connections=True)
@@ -52,9 +87,11 @@ def run_decay_pass(
         "engrams_archived": 0,
         "avg_accessibility_before": 0.0,
         "avg_accessibility_after": 0.0,
+        "cycle_span_hours": round(cycle_span, 2),
     }
 
     if not engrams:
+        store.set_meta(stamp_key, now.isoformat())
         return stats
 
     total_before = 0.0
@@ -64,7 +101,12 @@ def run_decay_pass(
         stats["engrams_processed"] += 1
         total_before += engram.accessibility
 
-        hours = _hours_since(engram.last_accessed)
+        # A memory only ages within this cycle's span, and never by more
+        # than its own time-since-access — one touched (or born) mid-span
+        # ages only from that moment. The recency floor below still reads
+        # the full since-access clock.
+        hours_since_access = _hours_since(engram.last_accessed, now)
+        hours = min(cycle_span, hours_since_access)
 
         # 1. ACCESSIBILITY DECAY
         # Stability resists decay exponentially: high stability → near-zero decay
@@ -105,7 +147,7 @@ def run_decay_pass(
         if "active_project" in engram.tags:
             new_accessibility = max(0.6, new_accessibility)
 
-        if hours < 72:
+        if hours_since_access < 72:
             new_accessibility = max(0.4, new_accessibility)
 
         # Track if anything changed
@@ -139,16 +181,20 @@ def run_decay_pass(
     # Use same denominator for fair comparison (archived engrams count as 0.0 accessibility)
     stats["avg_accessibility_after"] = round(total_after / n, 4)
 
+    # The pass spends its span exactly once: the next measured cycle
+    # starts from here. Written in declared-span mode too, so a later
+    # measured cycle never sees a stale stamp's giant gap.
+    store.set_meta(stamp_key, now.isoformat())
+
     return stats
 
 
-def _hours_since(iso_timestamp: str) -> float:
-    """Calculate hours elapsed since an ISO 8601 timestamp."""
+def _hours_since(iso_timestamp: str, now: datetime) -> float:
+    """Calculate hours elapsed from an ISO 8601 timestamp to ``now``."""
     try:
         then = datetime.fromisoformat(iso_timestamp)
         if then.tzinfo is None:
             then = then.replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
         delta = now - then
         return max(0.0, delta.total_seconds() / 3600)
     except (ValueError, TypeError):
