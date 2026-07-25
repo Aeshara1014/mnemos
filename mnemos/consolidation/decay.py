@@ -85,6 +85,8 @@ def run_decay_pass(
         "engrams_decayed": 0,
         "engrams_dormant": 0,
         "engrams_archived": 0,
+        "at_fade_gate": 0,
+        "fade_proposals": 0,
         "avg_accessibility_before": 0.0,
         "avg_accessibility_after": 0.0,
         "cycle_span_hours": round(cycle_span, 2),
@@ -163,7 +165,22 @@ def run_decay_pass(
         engram.strength = round(new_strength, 4)
 
         # 4. STATE TRANSITIONS
-        if new_accessibility < archive_threshold:
+        if new_accessibility < dormant_threshold and config.get("dormancy_review"):
+            # THE FADE GATE (the keeper's ruling, 2026-07-24): with
+            # dormancy_review set, a memory that reaches the dormancy
+            # line is HELD AT THE GATE instead of going under — still
+            # active, still recallable, tagged for review. Consolidation
+            # walks on; a person decides what sleeps. First crossing
+            # proposes (fade_proposals); later cycles find the tag and
+            # just hold it here (at_fade_gate). Nothing can slide past
+            # the gate to archive while it waits.
+            new_accessibility = dormant_threshold
+            engram.accessibility = dormant_threshold
+            if "fade-proposed" not in engram.tags:
+                engram.tags.append("fade-proposed")
+                stats["fade_proposals"] += 1
+            stats["at_fade_gate"] += 1
+        elif new_accessibility < archive_threshold:
             store.archive_engram(engram, reason="decay_below_threshold")
             stats["engrams_archived"] += 1
             continue
