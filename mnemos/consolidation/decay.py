@@ -165,18 +165,25 @@ def run_decay_pass(
         engram.strength = round(new_strength, 4)
 
         # 4. STATE TRANSITIONS
-        if new_accessibility < dormant_threshold and config.get("dormancy_review"):
-            # THE FADE GATE (the keeper's ruling, 2026-07-24): with
-            # dormancy_review set, a memory that reaches the dormancy
-            # line is HELD AT THE GATE instead of going under — still
-            # active, still recallable, tagged for review. Consolidation
-            # walks on; a person decides what sleeps. First crossing
-            # proposes (fade_proposals); later cycles find the tag and
-            # just hold it here (at_fade_gate). Nothing can slide past
-            # the gate to archive while it waits.
+        at_gate = "fade-proposed" in engram.tags
+        if new_accessibility < dormant_threshold and (
+            at_gate or config.get("dormancy_review")
+        ):
+            # THE FADE GATE (the keeper's ruling, 2026-07-24): a memory
+            # that reaches the dormancy line is HELD AT THE GATE instead
+            # of going under — still active, still recallable, tagged for
+            # review. Consolidation walks on; a person decides what
+            # sleeps. First crossing proposes (fade_proposals); later
+            # cycles find the tag and just hold it here (at_fade_gate).
+            # Nothing can slide past the gate to archive while it waits.
+            # THE HOLD LIVES ON THE MEMORY (2026-07-25): once proposed,
+            # the tag itself is the gate — every caller honors it, with
+            # or without dormancy_review. Before this, the first plain
+            # maintenance cycle (no flag) buried everything waiting for
+            # a ruling (SWEEP-A). Only the desk's ruling removes the tag.
             new_accessibility = dormant_threshold
             engram.accessibility = dormant_threshold
-            if "fade-proposed" not in engram.tags:
+            if not at_gate:
                 engram.tags.append("fade-proposed")
                 stats["fade_proposals"] += 1
             stats["at_fade_gate"] += 1
