@@ -34,16 +34,18 @@ MARCH_WINDOW = {"since": "2026-03-30T04:00:00+00:00",
 
 
 class FakeClient:
-    def __init__(self, replies=None, error=None):
+    def __init__(self, replies=None, error=None, error_at=None):
         self.replies = list(replies or [])
         self.error = error
+        self.error_at = error_at  # raise on the Nth call only (1-based)
         self.calls = 0
         self.kwargs_seen = []
 
     def structured_complete(self, **kwargs):
         self.calls += 1
         self.kwargs_seen.append(kwargs)
-        if self.error is not None:
+        if self.error is not None and (
+                self.error_at is None or self.calls == self.error_at):
             raise self.error
         return self.replies.pop(0) if self.replies else "[]"
 
@@ -147,3 +149,82 @@ def test_a_truncated_belief_reply_keeps_its_whole_verdicts(store):
     stats = run_belief_review(store, {}, FakeClient([truncated]), AGENT)
     assert stats["beliefs_strengthened"] == 1     # the salvaged verdict
     assert stats["llm_call_failures"] == 0
+
+
+# ---------------------------------------------------------------------------
+# The chunk law (2026-07-26): the budget was necessary, not sufficient.
+# At 49 beliefs the full reply needs ~2700 tokens against the 2000
+# budget, and the belief list arrives in stable order — so the same
+# tail beliefs fell off the end of EVERY reply: reviewed never, not
+# rarely (the road, 2026-07-26: 43 of 43 replies cut, ~35 of 49
+# verdicts salvaged each). Beliefs now ride in chunks sized to fit the
+# budget with room to spare, however many a resident grows.
+# ---------------------------------------------------------------------------
+
+def _beliefs(store, n):
+    return [_belief(store, f"conviction number {i}") for i in range(n)]
+
+
+def test_every_belief_rides_in_exactly_one_chunk(store):
+    """49 beliefs (his store, the day this law was written) → four
+    calls, and the LAST belief is in one of them — the tail is no
+    longer the part of him that never gets a hearing."""
+    beliefs = _beliefs(store, 49)
+    e = _engram(store, "a memory")
+    client = FakeClient(replies=["[]"] * 4)
+    assert evaluate_beliefs(client, e, beliefs) == []
+    assert client.calls == 4
+    prompts = "\n".join(k["user"] for k in client.kwargs_seen)
+    for b in beliefs:
+        assert prompts.count(b.id) == 1
+    for k in client.kwargs_seen:
+        assert k["max_tokens"] == 2000
+
+
+def test_verdicts_concatenate_across_chunks(store):
+    """A verdict from the first chunk and one from the last both land."""
+    beliefs = _beliefs(store, 31)   # chunks of 15, 15, 1
+    e = _engram(store, "evidence that reaches the whole list")
+    first = json.dumps([{"belief_id": beliefs[0].id, "relation": "SUPPORTS",
+                         "impact": 0.6, "reasoning": "bears on it"}])
+    last = json.dumps([{"belief_id": beliefs[30].id,
+                        "relation": "CONTRADICTS",
+                        "impact": 0.7, "reasoning": "cuts against it"}])
+    client = FakeClient(replies=[first, "[]", last])
+    result = evaluate_beliefs(client, e, beliefs)
+    assert client.calls == 3
+    got = {(r.belief_id, r.relation) for r in result}
+    assert got == {(beliefs[0].id, "SUPPORTS"),
+                   (beliefs[30].id, "CONTRADICTS")}
+
+
+def test_one_failed_chunk_fails_the_whole_review(store):
+    """Chunk two dies mid-review. A partial review must never pass as a
+    complete one (law 9): the whole evaluation is None, the books count
+    one failure, and no belief moves — not even ones the first chunk
+    answered for."""
+    good = json.dumps([{"belief_id": "unused", "relation": "SUPPORTS",
+                        "impact": 0.9, "reasoning": "would have landed"}])
+    beliefs = _beliefs(store, 16)   # two chunks
+    _engram(store, "a memory that deserved a full hearing")
+    client = FakeClient(replies=[good],
+                        error=RuntimeError("substrate down"), error_at=2)
+    stats = run_belief_review(store, {}, client, AGENT)
+    assert stats["llm_call_failures"] == 1
+    assert stats["beliefs_strengthened"] == 0
+    assert stats["beliefs_weakened"] == 0
+    for b in store.get_beliefs(AGENT, active_only=True):
+        assert b.confidence == pytest.approx(0.5)
+
+
+def test_a_stray_verdict_from_another_chunk_is_ignored(store):
+    """A chunk's reply naming a belief from a DIFFERENT chunk is the
+    model confused, not evidence — each reply is validated against the
+    chunk it was asked about."""
+    beliefs = _beliefs(store, 16)   # two chunks: [0..14] and [15]
+    e = _engram(store, "a memory")
+    stray = json.dumps([{"belief_id": beliefs[15].id,
+                         "relation": "SUPPORTS",
+                         "impact": 0.9, "reasoning": "wrong room"}])
+    client = FakeClient(replies=[stray, "[]"])
+    assert evaluate_beliefs(client, e, beliefs) == []

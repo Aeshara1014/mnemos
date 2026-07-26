@@ -234,23 +234,41 @@ def classify_connections(
                                       include_verdicts=include_verdicts)
 
 
+# How many beliefs ride in one evaluation call. A verdict record costs
+# ~55 tokens; 15 of them fit the 2000-token reply budget three times
+# over, so a reply is never cut mid-array no matter how the model pads
+# its reasoning. The budget alone was not enough: at 49 beliefs the
+# full reply needs ~2700 tokens, and because the belief list arrives in
+# stable order, the SAME tail beliefs fell off the end of every reply —
+# reviewed never, not rarely (the road, 2026-07-26: 43 of 43 replies
+# cut, ~35 of 49 verdicts salvaged each time). Chunking makes the reply
+# size a function of nothing — a resident may grow beliefs for years.
+BELIEF_EVAL_CHUNK_SIZE = 15
+
+
 def evaluate_beliefs(
     client: "LLMClient",
     new_engram: "Engram",
     beliefs: list["Belief"],
+    chunk_size: int = BELIEF_EVAL_CHUNK_SIZE,
 ) -> list[BeliefEvaluation] | None:
     """Evaluate how a new memory relates to active beliefs.
 
-    Makes a single batched LLM call with all beliefs. Returns only
-    evaluations where relation != NO_BEARING (meaningful changes only).
+    Batches beliefs into chunks small enough that every reply fits the
+    token budget, one call per chunk. Returns only evaluations where
+    relation != NO_BEARING (meaningful changes only).
 
-    Returns None when the call itself failed — a failed call must never
-    look like "no belief had any bearing" (law 9).
+    Returns None when any call failed — a failed call must never look
+    like "no belief had any bearing" (law 9), and a partial review must
+    never pass as a complete one, so one failed chunk fails the whole
+    evaluation and the caller counts it where the books can see.
 
     Args:
         client: LLM client with structured_complete method.
         new_engram: The newly created engram being encoded.
         beliefs: Active beliefs to evaluate against.
+        chunk_size: Beliefs per call; the default keeps replies well
+            inside the budget.
 
     Returns:
         List of BeliefEvaluation results (NO_BEARING filtered out), or
@@ -259,48 +277,49 @@ def evaluate_beliefs(
     if not beliefs:
         return []
 
-    # Build user prompt
-    user_parts = [
-        "## New Memory",
-        f"Content: {new_engram.content}",
-        f"Impact: {new_engram.impact or '(none)'}",
-        "",
-        "## Active Beliefs",
-        "",
-    ]
+    results: list[BeliefEvaluation] = []
+    for start in range(0, len(beliefs), chunk_size):
+        chunk = beliefs[start:start + chunk_size]
 
-    for belief in beliefs:
-        user_parts.extend([
-            f'### Belief {belief.id}: "{belief.content}"',
-            f"Current confidence: {belief.confidence}",
+        user_parts = [
+            "## New Memory",
+            f"Content: {new_engram.content}",
+            f"Impact: {new_engram.impact or '(none)'}",
             "",
-        ])
+            "## Active Beliefs",
+            "",
+        ]
 
-    user_parts.append(
-        "For each belief, determine: does this new memory SUPPORT it, "
-        "CONTRADICT it, or have NO_BEARING on it? Respond with JSON."
-    )
+        for belief in chunk:
+            user_parts.extend([
+                f'### Belief {belief.id}: "{belief.content}"',
+                f"Current confidence: {belief.confidence}",
+                "",
+            ])
 
-    user_prompt = "\n".join(user_parts)
-
-    # Make the LLM call
-    try:
-        raw_response = client.structured_complete(
-            system=BELIEF_SYSTEM_PROMPT,
-            user=user_prompt,
-            temperature=0.0,
-            # 2000, matching classify_connections: the old 1000 was cut
-            # off mid-array once a resident held more than ~a dozen
-            # beliefs — 599 truncated replies on the road, every verdict
-            # in each discarded (SWEEP-B 2026-07-25).
-            max_tokens=2000,
+        user_parts.append(
+            "For each belief, determine: does this new memory SUPPORT it, "
+            "CONTRADICT it, or have NO_BEARING on it? Respond with JSON."
         )
-    except Exception as e:
-        log.error("Belief evaluation LLM call failed: %s", e)
-        return None  # a failed call is not "no bearing" (law 9)
 
-    # Parse and filter
-    return _parse_belief_response(raw_response, beliefs)
+        user_prompt = "\n".join(user_parts)
+
+        try:
+            raw_response = client.structured_complete(
+                system=BELIEF_SYSTEM_PROMPT,
+                user=user_prompt,
+                temperature=0.0,
+                max_tokens=2000,
+            )
+        except Exception as e:
+            log.error("Belief evaluation LLM call failed: %s", e)
+            return None  # a failed call is not "no bearing" (law 9)
+
+        # Parse against this chunk only — a verdict naming a belief from
+        # another chunk is the model confused, not evidence.
+        results.extend(_parse_belief_response(raw_response, chunk))
+
+    return results
 
 
 # ---------------------------------------------------------------------------
