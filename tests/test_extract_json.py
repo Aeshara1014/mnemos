@@ -59,6 +59,21 @@ def test_partial_garbage_after_first_object_stops_gracefully():
     assert _extract_json('{"a": 1} garbage!!!') == [{"a": 1}]
 
 
+def test_truncated_array_recovers_the_complete_records():
+    """The salvage law (SWEEP-B 2026-07-25): a reply cut mid-array used
+    to lose EVERYTHING — the unterminated bracket failed the fast path,
+    then failed raw_decode at pos 0, and every complete verdict written
+    before the cut was discarded with the broken tail (599 times on the
+    road). Now the complete records are recovered; only the tail is lost."""
+    raw = '[{"a": 1}, {"b": 2}, {"c": "cut mid-str'
+    assert _extract_json(raw) == [{"a": 1}, {"b": 2}]
+
+
+def test_truncated_fenced_array_recovers_too():
+    raw = '```json\n[{"a": 1}, {"b": 2'
+    assert _extract_json(raw) == [{"a": 1}]
+
+
 def test_pathologically_deep_nesting_does_not_raise():
     # Python's C json scanner caps nesting (~10k) and raises RecursionError
     # (a RuntimeError, not JSONDecodeError). _extract_json must swallow it and

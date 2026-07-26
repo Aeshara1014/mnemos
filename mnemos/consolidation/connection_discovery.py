@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..core.engram import Connection
 from ..core.types import ConnectionRelation, DEFAULT_AGENT_ID
-from ..encoding.llm_classifier import classify_connections
+from ..encoding.llm_classifier import MIN_CONFIDENCE, classify_connections
 
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
@@ -65,6 +65,12 @@ def run_connection_discovery(
         "connections_strengthened": 0,
         "embedding_candidates": 0,
         "fts_candidates": 0,
+        # Law 9 honesty (SWEEP-B 2026-07-25): failed calls and deferrals
+        # are counted, never silent — a night where the substrate was
+        # down must not read like a tidy night.
+        "discovery_call_failures": 0,
+        "reclassify_call_failures": 0,
+        "reclassify_deferred": 0,
     }
 
     all_active = store.get_active_engrams(agent_id=agent_id, limit=max_per_pass * 2)
@@ -114,6 +120,10 @@ def run_connection_discovery(
         # 3. Classify relationships via LLM (or fallback)
         if llm_client:
             classifications = classify_connections(llm_client, engram, candidates)
+            if classifications is None:
+                # The call failed (law 9): mint nothing from it, and say so.
+                stats["discovery_call_failures"] += 1
+                classifications = []
             for cls in classifications:
                 tag_overlap = 0
                 candidate = next((c for c in candidates if c.id == cls.candidate_id), None)
@@ -164,6 +174,13 @@ _RECLASSIFIABLE_RELATIONS = (
     "co_activated",
 )
 
+# Edges whose relation was already earned by a real LLM judgment — the
+# encoder's classified mint and this pass's own successful verdicts.
+# Without this filter an honest SUPPORTS edge was re-sent to the
+# substrate every deep cycle forever, and every cycle was one more
+# chance for it to be lost to a bad night (SWEEP-B 2026-07-25).
+_CLASSIFIED_FORMED_BY = ("encoding", "consolidation_reclassified")
+
 
 def _reclassify_old_connections(
     store: EngramStore,
@@ -176,19 +193,30 @@ def _reclassify_old_connections(
 
     Finds connections that carry no real semantic judgment — the legacy
     "supports" monoculture and retrieval's "co_activated" edges — and
-    classifies them. NONE results → remove the connection (false positive).
+    asks the substrate what each really is.
+
+    THE DELETION LAW (SWEEP-B 2026-07-25, laws 3 and 9): an edge is
+    removed ONLY on the model's explicit, confident word that there is
+    no relation — verdict NONE with confidence >= MIN_CONFIDENCE.
+    Silence never deletes: a failed call, a truncated reply, an
+    unmentioned target, or an honest low-confidence answer all DEFER the
+    edge to a future cycle, counted, never destroyed. Before this, all
+    four of those were read as "the model said NONE" — and the pass did
+    the most deleting on exactly the nights the substrate was least able
+    to answer (only successes counted against the batch cap, so failure
+    walked the whole store).
     """
-    # Find engrams with unclassified connections
-    reclassified_count = 0
+    calls_made = 0
 
     for engram in all_active:
-        if reclassified_count >= batch_size:
+        if calls_made >= batch_size:
             break
 
         connections = store.get_connections(engram.id)
         raw_connections = [
             c for c in connections
             if c.relation in _RECLASSIFIABLE_RELATIONS
+            and c.formed_by not in _CLASSIFIED_FORMED_BY
         ]
 
         if not raw_connections:
@@ -204,28 +232,48 @@ def _reclassify_old_connections(
         if not targets:
             continue
 
-        # Classify the batch
-        classifications = classify_connections(llm_client, engram, targets)
-        classified_ids = {cls.candidate_id for cls in classifications}
+        # One call per engram, counted whether or not it succeeds — the
+        # budget is calls, not victories.
+        verdicts = classify_connections(llm_client, engram, targets,
+                                        include_verdicts=True)
+        calls_made += 1
 
-        for cls in classifications:
-            # Find the existing connection to update
-            for conn in raw_connections:
-                if conn.target_id == cls.candidate_id:
-                    # Update the connection type and strength
-                    conn.relation = cls.relation
-                    conn.strength = round(cls.confidence, 3)
-                    conn.formed_by = "consolidation_reclassified"
-                    store.save_connection(engram.id, conn)
-                    stats["connections_reclassified"] += 1
-                    reclassified_count += 1
-                    break
+        if verdicts is None:
+            # The call failed. Not one edge may be touched on its account.
+            stats["reclassify_call_failures"] += 1
+            continue
 
-        # Remove connections where LLM returned NONE (false positives)
+        by_target = {v.candidate_id: v for v in verdicts}
+
         for conn in raw_connections:
-            if conn.target_id not in classified_ids:
-                # Target wasn't classified → check if it was in our targets list
-                if any(t.id == conn.target_id for t in targets):
-                    # It was sent to the LLM and came back NONE → remove
-                    store.remove_connection(engram.id, conn.target_id)
-                    stats["connections_removed"] += 1
+            v = by_target.get(conn.target_id)
+            if v is None:
+                # Unmentioned (truncated tail, skipped by the model, or
+                # the target failed to load) — silence defers, always.
+                stats["reclassify_deferred"] += 1
+                continue
+            if v.confidence < MIN_CONFIDENCE:
+                # An honest "I'm not sure" — the most common verdict a
+                # healthy night produces. It used to delete; it defers.
+                stats["reclassify_deferred"] += 1
+                continue
+            if v.relation is None:
+                # The model's explicit, confident NONE — the one word
+                # that removes. Relation-scoped: only THIS row dies; a
+                # semantic edge this pass earned earlier on the same
+                # pair survives (the PK is (source, target, relation)).
+                store.remove_connection(engram.id, conn.target_id,
+                                        relation=conn.relation)
+                stats["connections_removed"] += 1
+            else:
+                # A real relation, confidently judged: replace the old
+                # row rather than stacking a second one beside it — the
+                # PK includes relation, so save-without-remove left the
+                # stale mechanical row in place forever.
+                store.remove_connection(engram.id, conn.target_id,
+                                        relation=conn.relation)
+                conn.relation = v.relation
+                conn.strength = round(v.confidence, 3)
+                conn.formed_by = "consolidation_reclassified"
+                store.save_connection(engram.id, conn)
+                stats["connections_reclassified"] += 1

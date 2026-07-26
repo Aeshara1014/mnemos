@@ -23,6 +23,11 @@ from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING, Any
 
 from ..encoding.llm_classifier import evaluate_beliefs, apply_belief_update
+# ONE definition of "the substrate talking to itself" (SWEEP-B slip #3:
+# the same rule written twice was fixed once — belief_formation's guard
+# worked, this file's copy compared a dataclass to a word and never
+# fired, for any resident, ever).
+from .belief_formation import _SUBSTRATE_SOURCES
 
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
@@ -63,6 +68,7 @@ def run_belief_review(
         "beliefs_weakened": 0,
         "beliefs_unchanged": 0,
         "skipped_substrate": 0,
+        "llm_call_failures": 0,
     }
 
     if not llm_client:
@@ -75,18 +81,39 @@ def run_belief_review(
         log.info("No active beliefs to review")
         return stats
 
-    # Get recent memories (last N hours, exclude substrate-generated)
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=review_window_hours)
-    recent = store.get_recent_engrams(
-        agent_id=agent_id,
-        since=cutoff,
-        limit=max_memories,
-    )
+    # The day-window seam (SWEEP-A/B 2026-07-25, same seam reflection
+    # already had): a replayed day's memories carry their HONEST
+    # historical created_at — months ago — so a wall-clock window can
+    # never contain one, and for 43 walked days this pass reviewed only
+    # what the dream itself wrote minutes earlier. When the caller
+    # declares the day (the road's reflection_window), review THAT day;
+    # a lived night without the seam keeps the wall-clock window.
+    window = config.get("reflection_window")
+    if window:
+        since = datetime.fromisoformat(window["since"])
+        until = datetime.fromisoformat(window["until"])
+        recent = store.get_recent_engrams(
+            agent_id=agent_id,
+            since=since,
+            until=until,
+            limit=max_memories,
+        )
+    else:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=review_window_hours)
+        recent = store.get_recent_engrams(
+            agent_id=agent_id,
+            since=cutoff,
+            limit=max_memories,
+        )
 
     for engram in recent:
-        # Skip substrate-generated engrams — prevent feedback loop
-        source = getattr(engram, 'source_type', None) or getattr(engram, 'source', None)
-        if source and str(source).lower() in ('substrate', 'reflection', 'consolidation'):
+        # Skip substrate-generated engrams — prevent feedback loop.
+        # The formation pass's shape (it was always right): MemorySource
+        # carries its kind in .type — the old code stringified the whole
+        # dataclass and compared it to a word, which could never match.
+        source = getattr(engram, "source_type", None) or getattr(engram, "source", None)
+        kind = getattr(source, "type", source)
+        if kind and str(kind).lower() in _SUBSTRATE_SOURCES:
             stats["skipped_substrate"] += 1
             continue
 
@@ -99,6 +126,11 @@ def run_belief_review(
 
         # Evaluate against beliefs via LLM
         evaluations = evaluate_beliefs(llm_client, engram, beliefs)
+        if evaluations is None:
+            # The call failed — that is not "no bearing" (law 9). Count
+            # it where the books can see it and touch nothing.
+            stats["llm_call_failures"] += 1
+            continue
 
         belief_map = {b.id: b for b in beliefs}
         for evaluation in belief_map.values():

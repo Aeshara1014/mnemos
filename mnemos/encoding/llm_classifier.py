@@ -139,9 +139,13 @@ Respond with ONLY a JSON array. No markdown, no explanation, no code fences. For
 
 @dataclass
 class ConnectionClassification:
-    """Result of classifying a single connection."""
+    """Result of classifying a single connection.
+
+    relation is None when the model explicitly said NONE — surfaced only
+    by classify_connections(include_verdicts=True); the default filtered
+    contract never returns such records."""
     candidate_id: str
-    relation: ConnectionRelation
+    relation: ConnectionRelation | None
     direction: str  # "forward" or "reverse"
     confidence: float
     reasoning: str
@@ -164,19 +168,22 @@ def classify_connections(
     client: "LLMClient",
     new_engram: "Engram",
     candidates: list["Engram"],
-) -> list[ConnectionClassification]:
+    include_verdicts: bool = False,
+) -> list[ConnectionClassification] | None:
     """Classify relationship types between a new memory and candidates.
 
-    Makes a single batched LLM call with all candidates. Returns only
-    classifications with confidence >= MIN_CONFIDENCE and relation != NONE.
+    Makes a single batched LLM call with all candidates. By default
+    returns only classifications with confidence >= MIN_CONFIDENCE and
+    relation != NONE (the encode path's contract: actionable positives).
 
-    Args:
-        client: LLM client with structured_complete method.
-        new_engram: The newly created engram being encoded.
-        candidates: Existing engrams found by FTS5 search.
+    With include_verdicts=True, returns EVERY validated verdict — NONE
+    records (relation=None) and low-confidence records included, with
+    their confidence attached — so a caller deciding whether to DESTROY
+    something can tell "the model said NONE, confidently" apart from
+    "the model was unsure" and "the model never mentioned it".
 
-    Returns:
-        List of ConnectionClassification results, filtered and validated.
+    Returns None when the call itself failed — a failed call must never
+    look like an empty answer (law 9); nothing may be inferred from it.
     """
     if not candidates:
         return []
@@ -220,21 +227,25 @@ def classify_connections(
         )
     except Exception as e:
         log.error("Connection classification LLM call failed: %s", e)
-        return []
+        return None  # a failed call is not an empty answer (law 9)
 
     # Parse response
-    return _parse_connection_response(raw_response, candidates)
+    return _parse_connection_response(raw_response, candidates,
+                                      include_verdicts=include_verdicts)
 
 
 def evaluate_beliefs(
     client: "LLMClient",
     new_engram: "Engram",
     beliefs: list["Belief"],
-) -> list[BeliefEvaluation]:
+) -> list[BeliefEvaluation] | None:
     """Evaluate how a new memory relates to active beliefs.
 
     Makes a single batched LLM call with all beliefs. Returns only
     evaluations where relation != NO_BEARING (meaningful changes only).
+
+    Returns None when the call itself failed — a failed call must never
+    look like "no belief had any bearing" (law 9).
 
     Args:
         client: LLM client with structured_complete method.
@@ -242,7 +253,8 @@ def evaluate_beliefs(
         beliefs: Active beliefs to evaluate against.
 
     Returns:
-        List of BeliefEvaluation results (NO_BEARING filtered out).
+        List of BeliefEvaluation results (NO_BEARING filtered out), or
+        None on call failure.
     """
     if not beliefs:
         return []
@@ -277,11 +289,15 @@ def evaluate_beliefs(
             system=BELIEF_SYSTEM_PROMPT,
             user=user_prompt,
             temperature=0.0,
-            max_tokens=1000,
+            # 2000, matching classify_connections: the old 1000 was cut
+            # off mid-array once a resident held more than ~a dozen
+            # beliefs — 599 truncated replies on the road, every verdict
+            # in each discarded (SWEEP-B 2026-07-25).
+            max_tokens=2000,
         )
     except Exception as e:
         log.error("Belief evaluation LLM call failed: %s", e)
-        return []
+        return None  # a failed call is not "no bearing" (law 9)
 
     # Parse and filter
     return _parse_belief_response(raw_response, beliefs)
@@ -329,9 +345,19 @@ def _extract_json(raw: str) -> list[dict]:
 
     # Fallback: consume back-to-back values one at a time. A single
     # json.loads() would silently keep only the first of ``{...}{...}``.
+    #
+    # TRUNCATION SALVAGE (SWEEP-B 2026-07-25): a reply cut mid-array —
+    # ``[ {...}, {...}, {"tr`` — used to lose EVERYTHING: the fast path
+    # fails on the unterminated array, and raw_decode at pos 0 fails on
+    # the same bracket, discarding every complete verdict written before
+    # the cut (599 times on the road). If the text opens an array the
+    # fast path couldn't finish, step inside it and walk the records —
+    # the complete ones are recovered, and the loss of the tail is loud.
     decoder = json.JSONDecoder()
     records: list[dict] = []
     idx, n = 0, len(text)
+    if text[0] == "[":
+        idx = 1  # the array is unterminated (fast path failed) — walk inside
     while idx < n:
         while idx < n and text[idx] in " \t\r\n,":
             idx += 1
@@ -340,10 +366,19 @@ def _extract_json(raw: str) -> list[dict]:
         try:
             value, end = decoder.raw_decode(text, idx)
         except (json.JSONDecodeError, RecursionError) as e:
+            if text[idx] == "]":
+                idx += 1  # the closing bracket of a walked array — not a loss
+                continue
             log.error(
                 "Failed to parse LLM JSON response at pos %d: %s\nRaw: %s",
                 idx, e, text[:500],
             )
+            if records:
+                log.warning(
+                    "reply ended mid-value — %d complete record(s) "
+                    "recovered, the rest of the batch is lost (truncated?)",
+                    len(records),
+                )
             break
         if isinstance(value, dict):
             records.append(value)
@@ -357,8 +392,15 @@ def _extract_json(raw: str) -> list[dict]:
 def _parse_connection_response(
     raw: str,
     candidates: list["Engram"],
+    include_verdicts: bool = False,
 ) -> list[ConnectionClassification]:
-    """Parse and validate connection classification response."""
+    """Parse and validate connection classification response.
+
+    Default: the encode path's filtered contract (NONE and low-confidence
+    dropped — only actionable positives). include_verdicts=True keeps
+    every validated verdict, NONE (relation=None) and low-confidence
+    included, so a destructive caller can distinguish an explicit
+    confident NONE from silence."""
     items = _extract_json(raw)
     valid_ids = {c.id for c in candidates}
     results = []
@@ -381,10 +423,19 @@ def _parse_connection_response(
                 continue
 
             if relation_str == "NONE":
-                log.debug("NONE for %s: %s", candidate_id, reasoning)
+                if include_verdicts:
+                    results.append(ConnectionClassification(
+                        candidate_id=candidate_id,
+                        relation=None,   # the model's explicit NONE
+                        direction="forward",
+                        confidence=confidence,
+                        reasoning=reasoning,
+                    ))
+                else:
+                    log.debug("NONE for %s: %s", candidate_id, reasoning)
                 continue
 
-            if confidence < MIN_CONFIDENCE:
+            if confidence < MIN_CONFIDENCE and not include_verdicts:
                 log.debug(
                     "Low confidence %.2f for %s (%s) -- skipping",
                     confidence, candidate_id, relation_str,

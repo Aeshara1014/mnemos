@@ -627,28 +627,35 @@ class EngramStore:
             for r in rows
         ]
 
-    def update_connection(self, source_id: str, connection) -> None:
-        """Update an existing connection's relation, strength, or formed_by."""
-        self._conn.execute(
-            """UPDATE connections
-               SET relation = ?, strength = ?, formed_by = ?
-               WHERE source_id = ? AND target_id = ?""",
-            (
-                connection.relation.value if hasattr(connection.relation, 'value') else str(connection.relation),
-                connection.strength,
-                connection.formed_by,
-                source_id,
-                connection.target_id,
-            ),
-        )
-        self._conn.commit()
+    # update_connection was deleted 2026-07-25 (SWEEP-A/B): no callers
+    # anywhere, and it was broken by construction — relation is part of
+    # the PRIMARY KEY (source_id, target_id, relation), so an UPDATE that
+    # sets relation on a pair-wide WHERE would collide the moment a pair
+    # honestly carries two rows. Reclassification uses remove-then-write.
 
-    def remove_connection(self, source_id: str, target_id: str) -> None:
-        """Remove a connection between two engrams."""
-        self._conn.execute(
-            "DELETE FROM connections WHERE source_id = ? AND target_id = ?",
-            (source_id, target_id),
-        )
+    def remove_connection(self, source_id: str, target_id: str,
+                          relation=None) -> None:
+        """Remove connection(s) between two engrams.
+
+        With relation given, only that row dies — the PK is
+        (source_id, target_id, relation), so one pair can lawfully carry
+        several rows, and a pair-wide delete was taking a good semantic
+        edge down with the stale mechanical one it stood beside
+        (SWEEP-B 2026-07-25). Without relation, every row for the pair
+        is removed (the original contract, for callers severing a pair
+        entirely)."""
+        if relation is not None:
+            rel = relation.value if hasattr(relation, "value") else str(relation)
+            self._conn.execute(
+                "DELETE FROM connections WHERE source_id = ? AND "
+                "target_id = ? AND relation = ?",
+                (source_id, target_id, rel),
+            )
+        else:
+            self._conn.execute(
+                "DELETE FROM connections WHERE source_id = ? AND target_id = ?",
+                (source_id, target_id),
+            )
         self._conn.commit()
 
     def get_recent_engrams(
@@ -656,6 +663,7 @@ class EngramStore:
         agent_id: str | None = None,
         since: "datetime | None" = None,
         limit: int = 50,
+        until: "datetime | None" = None,
     ) -> list:
         """Get recently created engrams, optionally filtered by agent and time.
 
@@ -663,6 +671,11 @@ class EngramStore:
             agent_id: Filter by agent ID (optional).
             since: Only return engrams created after this datetime (optional).
             limit: Maximum number to return.
+            until: Only return engrams created at or before this datetime
+                (optional) — with since, a closed window. The day-window
+                seam (2026-07-25): a replay reviews a WALKED day whose
+                memories carry honest historical stamps, which no
+                wall-clock cutoff can reach.
 
         Returns:
             List of Engram objects, most recent first.
@@ -677,6 +690,10 @@ class EngramStore:
         if since:
             query += " AND created_at > ?"
             params.append(since.isoformat())
+
+        if until:
+            query += " AND created_at <= ?"
+            params.append(until.isoformat())
 
         query += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)

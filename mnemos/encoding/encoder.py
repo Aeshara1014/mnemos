@@ -327,6 +327,11 @@ class Encoder:
             evaluations = evaluate_beliefs(
                 self._llm_client, engram, beliefs,
             )
+            # None = the call failed (law 9). On the encode path failure
+            # and emptiness both mean "update nothing" — collapse here,
+            # AFTER the distinction existed for callers who need it.
+            if evaluations is None:
+                evaluations = []
 
             # Build lookup for cooldown check
             belief_map = {b.id: b for b in beliefs}
@@ -462,6 +467,9 @@ class Encoder:
             classifications = classify_connections(
                 self._llm_client, engram, fts_candidates,
             )
+            # None = the call failed (law 9): mint no edges from it.
+            if classifications is None:
+                classifications = []
             for cls in classifications:
                 # Use classifier confidence as connection strength
                 strength = cls.confidence
