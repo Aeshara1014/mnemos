@@ -50,6 +50,7 @@ class LLMClient(Protocol):
         user: str,
         temperature: float = 0.0,
         max_tokens: int = 2000,
+        timeout: float | None = None,
     ) -> str: ...
 
 
@@ -93,19 +94,23 @@ class AnthropicClient:
         user: str,
         temperature: float = 0.0,
         max_tokens: int = 2000,
+        timeout: float | None = None,
     ) -> str:
         """Send a system+user prompt with temperature control.
 
         Used by the LLM classifier for deterministic, structured output.
-        Supports JSON-heavy responses with higher token limits.
+        Supports JSON-heavy responses with higher token limits. timeout,
+        when given, caps this one call (seconds); None keeps the SDK default.
         """
         client = self._get_client()
+        extra = {"timeout": timeout} if timeout is not None else {}
         response = client.messages.create(
             model=self._model,
             max_tokens=max_tokens,
             temperature=temperature,
             system=system,
             messages=[{"role": "user", "content": user}],
+            **extra,
         )
         return response.content[0].text
 
@@ -150,7 +155,7 @@ class ClaudeCLIClient:
         cmd.extend(["-p", prompt])
         return cmd
 
-    def _run(self, prompt: str) -> str:
+    def _run(self, prompt: str, timeout: float | None = None) -> str:
         import subprocess
 
         try:
@@ -158,7 +163,7 @@ class ClaudeCLIClient:
                 self._build_cmd(prompt),
                 capture_output=True,
                 text=True,
-                timeout=self._timeout,
+                timeout=timeout if timeout is not None else self._timeout,
             )
             return (result.stdout or "").strip()
         except Exception:
@@ -173,8 +178,9 @@ class ClaudeCLIClient:
         user: str,
         temperature: float = 0.0,
         max_tokens: int = 2000,
+        timeout: float | None = None,
     ) -> str:
-        return self._run(f"{system}\n\n{user}")
+        return self._run(f"{system}\n\n{user}", timeout=timeout)
 
 
 class OpenRouterClient:
@@ -252,8 +258,12 @@ class OpenRouterClient:
         user: str,
         temperature: float = 0.0,
         max_tokens: int = 2000,
+        timeout: float | None = None,
     ) -> str:
-        """Send a system+user prompt with temperature control."""
+        """Send a system+user prompt with temperature control. timeout,
+        when given, caps this one call (seconds); None keeps the 120s
+        default — callers on a hot path (the encode-time classifier) pass
+        a short cap so a dead call can never hold a worker for minutes."""
         import json
         import urllib.request
 
@@ -279,7 +289,8 @@ class OpenRouterClient:
                 "Content-Type": "application/json",
             },
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(
+                req, timeout=timeout if timeout is not None else 120) as resp:
             data = json.loads(resp.read())
         return data["choices"][0]["message"]["content"]
 
@@ -293,6 +304,7 @@ class MockClient:
         user: str,
         temperature: float = 0.0,
         max_tokens: int = 2000,
+        timeout: float | None = None,
     ) -> str:
         """Mock structured completion — returns empty JSON array."""
         return "[]"
@@ -678,8 +690,10 @@ class OpenAIClient:
         user: str,
         temperature: float = 0.0,
         max_tokens: int = 2000,
+        timeout: float | None = None,
     ) -> str:
-        """Send a system+user prompt with temperature control."""
+        """Send a system+user prompt with temperature control. timeout,
+        when given, caps this one call (seconds); None keeps the 60s default."""
         import httpx
 
         response = httpx.post(
@@ -697,7 +711,7 @@ class OpenAIClient:
                     {"role": "user", "content": user},
                 ],
             },
-            timeout=60.0,
+            timeout=timeout if timeout is not None else 60.0,
         )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
@@ -731,7 +745,8 @@ class OpenAICompatibleClient:
         self._timeout = timeout
 
     def _post(self, messages: list, temperature: float | None = None,
-              max_tokens: int | None = None) -> str:
+              max_tokens: int | None = None,
+              timeout: float | None = None) -> str:
         payload: dict = {
             "model": self._model,
             "max_tokens": max_tokens or self._max_tokens,
@@ -741,7 +756,8 @@ class OpenAICompatibleClient:
             payload["temperature"] = temperature
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else None
         data = _http_post_json(
-            f"{self._base_url}/chat/completions", payload, headers, self._timeout
+            f"{self._base_url}/chat/completions", payload, headers,
+            timeout if timeout is not None else self._timeout,
         )
         return data["choices"][0]["message"]["content"]
 
@@ -754,6 +770,7 @@ class OpenAICompatibleClient:
         user: str,
         temperature: float = 0.0,
         max_tokens: int = 2000,
+        timeout: float | None = None,
     ) -> str:
         return self._post(
             [
@@ -762,6 +779,7 @@ class OpenAICompatibleClient:
             ],
             temperature=temperature,
             max_tokens=max_tokens,
+            timeout=timeout,
         )
 
 
@@ -799,7 +817,8 @@ class OllamaClient:
         self._think = think
 
     def _post(self, messages: list, temperature: float | None = None,
-              max_tokens: int | None = None) -> str:
+              max_tokens: int | None = None,
+              timeout: float | None = None) -> str:
         options: dict = {"num_predict": max_tokens or self._max_tokens}
         if temperature is not None:
             options["temperature"] = temperature
@@ -811,7 +830,8 @@ class OllamaClient:
             "options": options,
         }
         data = _http_post_json(
-            f"{self._base_url}/api/chat", payload, timeout=self._timeout
+            f"{self._base_url}/api/chat", payload,
+            timeout=timeout if timeout is not None else self._timeout,
         )
         return (data.get("message") or {}).get("content", "")
 
@@ -824,6 +844,7 @@ class OllamaClient:
         user: str,
         temperature: float = 0.0,
         max_tokens: int = 2000,
+        timeout: float | None = None,
     ) -> str:
         return self._post(
             [
@@ -832,4 +853,5 @@ class OllamaClient:
             ],
             temperature=temperature,
             max_tokens=max_tokens,
+            timeout=timeout,
         )

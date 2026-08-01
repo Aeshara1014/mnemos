@@ -34,6 +34,17 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("mnemos.classifier")
 
+# Per-call ceiling for the classifier's LLM calls (seconds). These run at
+# ENCODE time — on the agent's single worker, with a chat exchange's memory
+# behind them — so a dead call must fail in seconds, not held to a transport
+# default. 45s is generous for a healthy structured verdict (2-8s hosted,
+# 10-30s local) while capping the worst hang; a timed-out call falls into
+# the existing failure law (law 9: skipped, never guessed) and belief work
+# is caught up by the nightly belief_review pass. Sized for a local 35b
+# model's honest thinking time — do not lower it casually (2026-07-31, the
+# night a 120s-default hang held the chat door shut for 3m41s).
+CLASSIFIER_CALL_TIMEOUT = 45.0
+
 # The 7 core types the LLM is allowed to return
 VALID_RELATIONS = {
     "SUPPORTS", "CONTRADICTS", "CAUSES", "EXTENDS",
@@ -224,6 +235,7 @@ def classify_connections(
             user=user_prompt,
             temperature=0.0,
             max_tokens=2000,
+            timeout=CLASSIFIER_CALL_TIMEOUT,
         )
     except Exception as e:
         log.error("Connection classification LLM call failed: %s", e)
@@ -310,6 +322,7 @@ def evaluate_beliefs(
                 user=user_prompt,
                 temperature=0.0,
                 max_tokens=2000,
+                timeout=CLASSIFIER_CALL_TIMEOUT,
             )
         except Exception as e:
             log.error("Belief evaluation LLM call failed: %s", e)
