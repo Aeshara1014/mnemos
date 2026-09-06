@@ -80,7 +80,7 @@ def test_compose_includes_counts_and_belief_deltas():
 
     assert narrative is not None
     assert "Deep consolidation ran while you were away." in narrative
-    assert "I connected 2 memories" in narrative
+    assert "I drew 2 new connections between memories" in narrative
     assert "I softened 1 stale detail and kept their lessons." in narrative
     assert "3 faded memories" in narrative
     assert '"tests matter" strengthened' in narrative

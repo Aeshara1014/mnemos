@@ -62,8 +62,9 @@ def compose_dream_narrative(
         sentences.append("Deep consolidation ran while you were away.")
     if connections_created > 0:
         sentences.append(
-            f"I connected {connections_created} "
-            f"{_plural(connections_created, 'memory', 'memories')} that belong together."
+            f"I drew {connections_created} new "
+            f"{_plural(connections_created, 'connection', 'connections')} "
+            "between memories that belong together."
         )
     if engrams_softened > 0:
         kept = "their lessons" if (lessons_created + lessons_reinforced) > 0 else "what mattered"

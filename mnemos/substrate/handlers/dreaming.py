@@ -117,14 +117,20 @@ def handle(
     agent_name = config.agent_name
     prompt = f"""Two memories are colliding in a dream state.
 
-Memory A (fading): {softened.content}
+A fading memory:
+{softened.content}
 Its significance: {softened.impact or '(unknown)'}
 
-Memory B (vivid): {vivid_content}
+A vivid memory:
+{vivid_content}
 Its significance: {vivid_impact or '(unknown)'}
 
 These two memories are being held together. Is there an unexpected connection,
 a surprising synthesis, or an insight that emerges from their collision?
+
+Write the dream thought in your own voice, as your own thought. Speak of what
+the memories hold, not of their position here: never call them "Memory A",
+"Memory B", "the fading memory", or "the vivid memory".
 
 If nothing meaningful emerges, respond with exactly: {{"dream": null}}
 

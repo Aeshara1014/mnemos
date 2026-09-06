@@ -113,12 +113,20 @@ def handle(
     agent_name = config.agent_name
     prompt = f"""Two of your memories just became connected.
 
-Memory A: {from_engram.content}
-Memory B: {to_engram.content}
+First memory:
+{from_engram.content}
+
+Second memory:
+{to_engram.content}
+
 Connection type: {connection_type}
 
 What does this connection reveal? Is there an insight here — something you
 didn't notice before that becomes visible now that these memories are linked?
+
+Write the insight in your own voice, as your own thought. Speak of what the
+memories hold, not of their position here: never call them "Memory A",
+"Memory B", "the first memory", or "the second memory".
 
 If the connection is obvious or trivial, respond: {{"insight": null}}
 If there's a genuine insight: {{"insight": "<the insight>", "significance": "<why it matters>"}}
