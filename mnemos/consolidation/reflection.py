@@ -12,13 +12,14 @@ template-based fallbacks that still produce useful (if less creative) output.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ..core.emotional_state import EmotionalState
 from ..core.identity import AgentIdentity, IdentityProfile
-from ..core.types import EngramKind, SourceType
+from ..core.types import EngramKind, SourceType, is_outside_voice
 
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
@@ -126,8 +127,8 @@ def run_reflection_pass(
     if len(recent) < 3:
         return stats
 
-    # Format for prompts
-    memory_summary = "\n".join(f"- {e.content}" for e in recent[:20])
+    # Format for prompts — an outside voice labeled as one
+    memory_summary = "\n".join(_memory_line(e) for e in recent[:20])
 
     # 2. GENERATE THOUGHTS
     if llm_client:
@@ -171,6 +172,27 @@ def run_reflection_pass(
     stats["lessons_accumulated"] = profile.lessons_accumulated
 
     return stats
+
+
+_OUTSIDE_VOICE_LABEL = "The Observer, an outside voice, said to you:"
+_OLD_OBSERVER_TAG = re.compile(r"^\[observer:[a-z]+\]\s*")
+
+
+def _memory_line(engram) -> str:
+    """One memory as the dream reads it.
+
+    An outside voice — the Observer's note (DD-026) — is labeled as what it
+    is: another mind's words TO the rememberer. The dream may take them up or
+    leave them, but it must never mistake them for its own thought
+    (2026-09-08: read unlabeled, "you keep circling" came back as "I keep
+    circling", and the Observer then read the echo as his). A note that
+    already opens with the Observer's own banner stands as written; the
+    older bracket tag is folded into the label.
+    """
+    content = (engram.content or "").strip()
+    if is_outside_voice(engram) and not content.lower().startswith("the observer"):
+        return f"- {_OUTSIDE_VOICE_LABEL} {_OLD_OBSERVER_TAG.sub('', content)}"
+    return f"- {content}"
 
 
 def _llm_generate_thoughts(

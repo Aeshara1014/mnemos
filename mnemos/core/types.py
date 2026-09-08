@@ -98,6 +98,33 @@ class SourceType(str, Enum):
     EXTERNAL = "external"                        # From external ingestion pipeline
 
 
+# Sources that are ANOTHER mind's words addressed TO the agent, kept in his
+# store so he can hear them — never his own thought, never lived evidence
+# about him. Every pass that rewrites, weighs, or reflects on memories
+# honors this (2026-09-08: unguarded, the Observer's notes were softened
+# into his first person, counted as lived evidence, and became a belief
+# about himself — "my inner reflections have fallen into repetitive loops").
+OUTSIDE_VOICE_SOURCES = (SourceType.OBSERVER.value,)
+
+
+def source_type_of(engram) -> str:
+    """The plain source-type word of an engram ("session", "observer", ...).
+
+    MemorySource carries its kind in .type — a SourceType member in memory,
+    the plain string once the store hands it back; older call sites also
+    read a bare source_type attribute. All three shapes answer here.
+    """
+    source = getattr(engram, "source_type", None) or getattr(engram, "source", None)
+    kind = getattr(source, "type", source)
+    kind = getattr(kind, "value", kind)
+    return str(kind).lower() if kind else ""
+
+
+def is_outside_voice(engram) -> bool:
+    """Another mind's words to him — not his own memory of living."""
+    return source_type_of(engram) in OUTSIDE_VOICE_SOURCES
+
+
 # Constants
 DEFAULT_STRENGTH = 0.5
 DEFAULT_STABILITY = 0.1

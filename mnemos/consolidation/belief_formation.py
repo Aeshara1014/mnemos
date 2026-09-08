@@ -14,7 +14,9 @@ Design guards (this pass rewrites who the agent is — it earns its caution):
   Rule-based belief formation would be a stranger guessing at convictions.
 - Lived memories only. Substrate-generated engrams (reflections, consolidation
   narratives) are skipped — the same feedback-loop guard belief_review uses.
-  The agent believes what it lived, not what its sleep muttered.
+  The agent believes what it lived, not what its sleep muttered. An outside
+  voice (the Observer's notes) is skipped for the same reason from the other
+  side: what another mind said to him is not what he lived.
 - Conservative by contract. The prompt instructs that most nights form nothing;
   every candidate must be grounded in several distinct memories, and formation
   is capped per cycle. Beliefs accrete slowly or they mean nothing.
@@ -35,7 +37,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..core.belief import Belief
-from ..core.types import DEFAULT_AGENT_ID
+from ..core.types import DEFAULT_AGENT_ID, OUTSIDE_VOICE_SOURCES, source_type_of
 from ..encoding.llm_classifier import _extract_json
 
 if TYPE_CHECKING:
@@ -53,6 +55,13 @@ log = logging.getLogger("mnemos.consolidation.belief_formation")
 # entry -> belief -> tomorrow's journal material -> entry.
 _SUBSTRATE_SOURCES = ("substrate", "reflection", "consolidation", "dream",
                       "doc_revision", "journal")
+
+# An outside voice — the Observer's notes (DD-026) — is not lived evidence
+# either: another mind said it TO him. He comes to believe it only by living
+# it, his own sessions bearing it out (2026-09-08: seven Observer notes,
+# read as lived, formed "my inner reflections have fallen into repetitive
+# loops" — the guardian's whisper hardened into his conviction overnight).
+_NOT_LIVED_SOURCES = _SUBSTRATE_SOURCES + OUTSIDE_VOICE_SOURCES
 
 _SYSTEM_PROMPT = (
     "You are the memory consolidation substrate for an AI agent, running during "
@@ -123,6 +132,7 @@ def run_belief_formation_pass(
     stats = {
         "memories_considered": 0,
         "skipped_substrate": 0,
+        "skipped_outside_voice": 0,
         "candidates_proposed": 0,
         "beliefs_formed": 0,
         "skipped_duplicate": 0,
@@ -140,10 +150,12 @@ def run_belief_formation_pass(
     )
     lived = []
     for engram in engrams:
-        source = getattr(engram, "source_type", None) or getattr(engram, "source", None)
-        kind = getattr(source, "type", source)  # MemorySource carries a .type string
-        if kind and str(kind).lower() in _SUBSTRATE_SOURCES:
+        kind = source_type_of(engram)
+        if kind in _SUBSTRATE_SOURCES:
             stats["skipped_substrate"] += 1
+            continue
+        if kind in OUTSIDE_VOICE_SOURCES:
+            stats["skipped_outside_voice"] += 1
             continue
         lived.append(engram)
     stats["memories_considered"] = len(lived)

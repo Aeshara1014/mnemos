@@ -156,6 +156,22 @@ class TestBeliefFormation:
         # Below min_supporting — the LLM is never even consulted.
         assert client.calls == []
 
+    def test_an_outside_voice_never_seeds_a_belief(self, store):
+        # The Observer's notes are another mind's words to him, not lived
+        # evidence (2026-09-08: seven of them formed a belief about himself).
+        for content in FOG_MEMORIES[:3]:
+            e = Engram(content=content, source=MemorySource(type="observer"))
+            store.save_engram(e)
+        _seed_lived(store, ["One lived memory."])
+        client = FakeClient([])
+
+        stats = run_belief_formation_pass(store, llm_client=client)
+
+        assert stats["skipped_outside_voice"] == 3
+        assert stats["skipped_substrate"] == 0
+        assert stats["memories_considered"] == 1
+        assert client.calls == []
+
     def test_confidence_clamped_to_cap(self, store):
         engrams = _seed_lived(store, FOG_MEMORIES)
         client = FakeClient([_proposal(engrams, confidence=0.95)])

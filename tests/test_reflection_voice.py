@@ -65,3 +65,29 @@ def test_the_pass_tells_the_dream_whose_thoughts_these_are(store):
     # ...and the placeholder name never leaks in as the self.
     assert '"Agent"' not in prompt
     assert "you are the rememberer" in prompt.lower()
+
+
+def test_the_dream_hears_the_observer_as_an_outside_voice(store):
+    """An Observer note among the day's memories is labeled as another
+    mind's words to him — never listed bare among his own (2026-09-08:
+    unlabeled, "you keep circling" came back as "I keep circling"). A note
+    that already wears the Observer's banner stands as written."""
+    from mnemos.core.types import SourceType
+
+    _seed_today(store)
+    enc = Encoder(store)
+    for content in (
+        "[observer:stagnation] you circle the bell without landing",
+        "The Observer, an outside voice, says to you (pattern): the fog again",
+    ):
+        enc.encode(content=content, agent_id="claw", tags=["observer"],
+                   source=SourceType.OBSERVER, skip_surprise_detection=True)
+    stub = RecordingLLM()
+    run_reflection_pass(store, _identity(), EmotionalState(), llm_client=stub)
+    prompt = stub.prompts[0]
+    assert ("- The Observer, an outside voice, said to you: "
+            "you circle the bell without landing") in prompt
+    assert "[observer:stagnation]" not in prompt
+    assert "- The Observer, an outside voice, says to you (pattern): the fog again" in prompt
+    assert "said to you: The Observer" not in prompt  # the banner is never doubled
+    assert "- a lived moment 0" in prompt  # his own memories stay bare

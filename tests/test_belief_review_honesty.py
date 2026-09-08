@@ -96,6 +96,19 @@ def test_the_substrate_guard_finally_fires(store):
     assert client.calls == 0
 
 
+def test_an_outside_voice_never_revises_a_belief(store):
+    """The Observer's note is skipped BEFORE any LLM call — another mind's
+    words to him are not evidence about him (2026-09-08)."""
+    _belief(store)
+    _engram(store, "[observer:stagnation] you keep circling", source_type="observer")
+    client = FakeClient()
+    stats = run_belief_review(store, {}, client, AGENT)
+    assert stats["skipped_outside_voice"] == 1
+    assert stats["skipped_substrate"] == 0
+    assert stats["memories_reviewed"] == 0
+    assert client.calls == 0
+
+
 def test_the_window_seam_reaches_a_replayed_day(store):
     """A replayed memory wears its honest March stamp. The wall-clock
     window can never see it; the declared day-window reviews it."""

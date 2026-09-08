@@ -274,3 +274,43 @@ def test_tiny_memory_keeps_original_rather_than_inflating(store):
     # Nothing to shed: conservation keeps the original instead of an
     # "impression" boilerplate that would be longer than the memory itself.
     assert softened.content == "ok then."
+
+
+def test_an_outside_voice_is_never_rewritten(store):
+    """The Observer's note is another mind's words TO the rememberer. It
+    fades like anything else, but the softener never paraphrases it into
+    his own voice — and it never serves as an exemplar of that voice
+    (2026-09-08: nine of twelve notes came back in the first person)."""
+    from mnemos.core.engram import MemorySource
+
+    vivid = _engram(
+        AGENT_A,
+        "i kept circling the same connection graph until it finally clicked... the shape was the answer",
+        accessibility=0.9,
+    )
+    note = _engram(
+        AGENT_A,
+        "[observer:stagnation] You keep circling the same feelings without moving them forward",
+        accessibility=0.45,
+    )
+    note.source = MemorySource(type="observer")
+    fading = _engram(
+        AGENT_A,
+        "On June 3rd at 14:02 I debugged the spreading activation threshold with a profiler trace",
+        accessibility=0.45,
+    )
+    for e in (vivid, note, fading):
+        store.save_engram(e)
+
+    stub = StubLLM("a fading sense of chasing the activation threshold")
+    stats = run_softening_pass(store, {}, stub, agent_id=AGENT_A)
+
+    kept = store.get_engram(note.id)
+    assert kept.content == note.content
+    assert kept.resolution == 1.0
+    assert stats["skipped_outside_voice"] == 1
+    # the lived memory beside it still softened...
+    assert store.get_engram(fading.id).resolution < 1.0
+    # ...and the Observer's words never posed as his voice in any prompt
+    assert stub.prompts
+    assert all("You keep circling" not in prompt for prompt in stub.prompts)

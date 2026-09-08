@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 import ulid as _ulid_mod
 
+from ..core.types import is_outside_voice
 from ..core.types import ConnectionRelation, EngramKind, SourceType
 
 if TYPE_CHECKING:
@@ -130,6 +131,15 @@ def run_softening_pass(
     for engram in all_engrams:
         if engram.resolution <= minimum_resolution:
             continue  # Already at minimum resolution
+
+        if is_outside_voice(engram):
+            # Quoted, never paraphrased (2026-09-08): the softener rewrites
+            # "in the rememberer's own voice", and the Observer's "you keep
+            # circling" came back as "I keep circling" — nine of twelve notes
+            # in one night. The note still fades like anything else (decay,
+            # accessibility); its words stay the Observer's.
+            stats["skipped_outside_voice"] = stats.get("skipped_outside_voice", 0) + 1
+            continue
 
         stats["engrams_evaluated"] += 1
         total_res_before += engram.resolution
@@ -322,7 +332,10 @@ def _select_voice_exemplars(all_engrams: list, k: int = 4) -> list:
     already agent-scoped by the caller — exemplars must come from the same
     agent whose memories are being rewritten.
     """
-    candidates = [e for e in all_engrams if e.content and len(e.content) >= 20]
+    # An outside voice never poses as his voice (2026-09-08): the
+    # Observer's "you keep circling" is not an exemplar of how HE remembers.
+    candidates = [e for e in all_engrams
+                  if e.content and len(e.content) >= 20 and not is_outside_voice(e)]
     candidates.sort(key=lambda e: (e.resolution, e.strength), reverse=True)
     return candidates[:k]
 

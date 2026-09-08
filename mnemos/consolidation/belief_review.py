@@ -27,6 +27,7 @@ from ..encoding.llm_classifier import evaluate_beliefs, apply_belief_update
 # the same rule written twice was fixed once — belief_formation's guard
 # worked, this file's copy compared a dataclass to a word and never
 # fired, for any resident, ever).
+from ..core.types import OUTSIDE_VOICE_SOURCES, source_type_of
 from .belief_formation import _SUBSTRATE_SOURCES
 
 if TYPE_CHECKING:
@@ -68,6 +69,7 @@ def run_belief_review(
         "beliefs_weakened": 0,
         "beliefs_unchanged": 0,
         "skipped_substrate": 0,
+        "skipped_outside_voice": 0,
         "llm_call_failures": 0,
     }
 
@@ -111,10 +113,14 @@ def run_belief_review(
         # The formation pass's shape (it was always right): MemorySource
         # carries its kind in .type — the old code stringified the whole
         # dataclass and compared it to a word, which could never match.
-        source = getattr(engram, "source_type", None) or getattr(engram, "source", None)
-        kind = getattr(source, "type", source)
-        if kind and str(kind).lower() in _SUBSTRATE_SOURCES:
+        kind = source_type_of(engram)
+        if kind in _SUBSTRATE_SOURCES:
             stats["skipped_substrate"] += 1
+            continue
+        # An outside voice (the Observer's note) is not evidence about him
+        # either — another mind said it TO him (2026-09-08).
+        if kind in OUTSIDE_VOICE_SOURCES:
+            stats["skipped_outside_voice"] += 1
             continue
 
         # Skip if this engram already had surprise detection during encoding
