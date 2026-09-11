@@ -27,8 +27,13 @@ def build_context_packet(
     max_hypomnema: int = 8,
     max_engrams: int = 6,
     embedding_index: Any | None = None,
+    reconsolidate: bool = True,
 ) -> dict[str, Any]:
     """Build the complete memory packet an agent should read before acting.
+
+    reconsolidate=False builds the packet without reconsolidating what it
+    retrieves (no access stamp, no strength/stability/accessibility lift, no
+    co-retrieval edges) — a read that is not a rehearsal.
 
     The packet orders memory from most immediately actionable to most durable:
     functional memory, hypomnema continuity, then Mnemos engrams and beliefs.
@@ -73,7 +78,15 @@ def build_context_packet(
 
     engrams: list[dict[str, Any]] = []
     if query.strip():
-        retriever = ReactiveRetriever(store, embedding_index=embedding_index)
+        # reconsolidate=False: a read that leaves no fingerprint — for a
+        # packet the house hands the agent unbidden (the Lighthouse's
+        # stone 3, 2026-09-11: only the agent's OWN reach counts as
+        # remembering; an automatic recall must not rehearse what it
+        # happens to return, or the same few memories win every turn).
+        retriever = ReactiveRetriever(
+            store, embedding_index=embedding_index,
+            reconsolidation_enabled=reconsolidate,
+        )
         emotional_state = store.get_latest_emotional_state(agent_id)
         results = retriever.retrieve(
             cue=query,

@@ -57,6 +57,11 @@ def run_decay_pass(
         Statistics dict with counts and accessibility changes.
     """
     decay_rate = config.get("decay_rate", 0.01)
+    # The recency floor: a memory touched within this many hours cannot
+    # decay below 0.4 accessibility. Engine default 72h; the Lighthouse
+    # sets 14 days (Tara's ruling, 2026-09-11 — three days whole, two
+    # weeks easy to reach, then only what is reached for stays bright).
+    recency_floor_hours = float(config.get("recency_floor_hours", 72))
     dormant_threshold = config.get("dormant_threshold", 0.05)
     archive_threshold = config.get("archive_threshold", 0.01)
 
@@ -149,7 +154,7 @@ def run_decay_pass(
         if "active_project" in engram.tags:
             new_accessibility = max(0.6, new_accessibility)
 
-        if hours_since_access < 72:
+        if hours_since_access < recency_floor_hours:
             new_accessibility = max(0.4, new_accessibility)
 
         # Track if anything changed

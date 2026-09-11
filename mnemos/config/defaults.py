@@ -72,6 +72,7 @@ DEFAULT_CONFIG: dict = {
         "dormant_threshold": 0.05,
         "archive_threshold": 0.01,
         "decay_interval_hours": 6,
+        "recency_floor_hours": 72,          # touched within this: accessibility floor 0.4
 
         # Long-term stability (exponential decay model)
         "stability_decay_factor": 3.0,         # k in exp(-k * stability)

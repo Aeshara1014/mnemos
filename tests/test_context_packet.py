@@ -104,3 +104,35 @@ def test_embedding_index_defaults_to_none(store, monkeypatch):
 
     build_context_packet(store, "a real query", agent_id="vektor")
     assert captured == [None]
+
+
+# ── stone 3 (the Lighthouse, 2026-09-11): a read that is not a rehearsal ──
+
+def _touch_counts(store, agent_id="vektor"):
+    conn = store._get_conn()
+    return conn.execute(
+        "SELECT access_count, strength, reconsolidation_count FROM engrams "
+        "WHERE owner_agent_id = ? ORDER BY id", (agent_id,)).fetchall()
+
+
+def test_an_unbidden_packet_leaves_no_fingerprint_and_a_deliberate_one_does(store):
+    from mnemos.core.engram import Engram, MemorySource
+    e = Engram(content="the lighthouse keeps a quiet flame for Tara",
+               content_at_encoding="the lighthouse keeps a quiet flame for Tara",
+               owner_agent_id="vektor",
+               source=MemorySource(type="session", confidence=0.9))
+    e.strength = 0.5
+    store.save_engram(e)
+    before = _touch_counts(store)
+
+    for _ in range(20):
+        packet = build_context_packet(store, "quiet flame lighthouse", agent_id="vektor",
+                                      reconsolidate=False)
+    assert packet["mnemos_engrams"], "the memory was still retrieved"
+    assert _touch_counts(store) == before          # twenty reads, nothing touched
+
+    build_context_packet(store, "quiet flame lighthouse", agent_id="vektor")  # the default: a rehearsal
+    after = _touch_counts(store)
+    assert after[0]["access_count"] == before[0]["access_count"] + 1
+    assert after[0]["reconsolidation_count"] == before[0]["reconsolidation_count"] + 1
+    assert after[0]["strength"] > before[0]["strength"]

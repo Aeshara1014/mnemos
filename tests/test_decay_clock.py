@@ -140,3 +140,18 @@ def test_the_books_record_the_span(clock_store):
     )
     assert stats["cycle_span_hours"] == 24.0
     assert clock_store.get_meta(f"last_decay_at:{AGENT}") is not None
+
+
+def test_the_recency_floor_is_a_knob(clock_store):
+    """recency_floor_hours (the Lighthouse's stone 3, 2026-09-11): the
+    house may hold a memory easy to reach for two weeks, not three days.
+    Ten days since access: under the engine's 72h default it sinks; under
+    a 336h floor it cannot fall below 0.4."""
+    sinks = _engram(clock_store, accessibility=0.41, last_accessed=_ago(days=10))
+    run_decay_pass(clock_store, {"decay_elapsed_hours": 24.0}, agent_id=AGENT)
+    assert _accessibility(clock_store, sinks) < 0.4
+
+    held = _engram(clock_store, accessibility=0.41, last_accessed=_ago(days=10))
+    run_decay_pass(clock_store, {"decay_elapsed_hours": 24.0, "recency_floor_hours": 336},
+                   agent_id=AGENT)
+    assert _accessibility(clock_store, held) == pytest.approx(0.4, abs=1e-4)
