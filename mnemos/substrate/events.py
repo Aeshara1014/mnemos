@@ -30,6 +30,7 @@ class EventType(str, Enum):
     WANDERING_RECORDED = "wandering_recorded"  # A silence wander was actually encoded
     INSIGHT_RECORDED = "insight_recorded"      # A connection insight was actually encoded
     SURPRISE_RECORDED = "surprise_recorded"    # A surprise reflection was actually encoded
+    DREAM_RECORDED = "dream_recorded"          # A collision dream was actually encoded (the Keeper's dream pass, 2026-09-10)
 
     # Accumulation events
     SALIENCE_ACCUMULATED = "salience_accumulated"  # Built-up unprocessed salience

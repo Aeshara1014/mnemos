@@ -22,6 +22,7 @@ from pathlib import Path
 from ..events import SubstrateEvent, EventType
 from ..config import SubstrateConfig
 from ..modulators import ModulatorState
+from ...core.types import SourceType
 
 log = logging.getLogger("mnemos.substrate.dreaming")
 
@@ -193,12 +194,24 @@ If something does emerge, respond with:
     ei = EI(db_path=db_path)
     encoder = Encoder(store, embedding_index=ei, llm_client=llm_client)
 
-    encoder.encode(
+    engram = encoder.encode(
         content=full_content,
         impact=significance,
         kind="episodic",
         tags=["dream", "collision"],
+        source=SourceType.DREAM,
+        agent_id=config.agent_id,
         skip_surprise_detection=True,
     )
 
+    # Signal a REAL write (the wandering handler's law, 2026-09-10): every
+    # gated or dissolved path above returns the empty list, so a non-empty
+    # return is the honest "a dream actually landed" marker the tick summary
+    # and the Keeper's activity log key off. Not re-cascaded (depth-1).
+    produced_events.append(SubstrateEvent(
+        event_type=EventType.DREAM_RECORDED,
+        payload={"engram_id": engram.id,
+                 "softened_id": softened_id, "vivid_id": vivid_id},
+        source="dreaming",
+    ))
     return produced_events

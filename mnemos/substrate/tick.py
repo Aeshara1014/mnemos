@@ -191,9 +191,9 @@ class Substrate:
         - encode-time surprise traces (encoding_context.surprise_level,
           stamped by the encoder during normal chat encodes) → surprise
           reflection.
-        The dreaming(collision) handler still has no living source — its
-        MEMORY_SOFTENED events come from the substrate's own consolidation,
-        which stays skipped here (named in the platform's machinery gaps).
+        The dreaming (collision) handler is not driven here either: its
+        MEMORY_SOFTENED seeds belong to the night. The Keeper runs
+        ``dream_pass()`` right after each completed deep (2026-09-10).
         """
         tick_start = datetime.now(timezone.utc)
         summary = {
@@ -270,6 +270,82 @@ class Substrate:
             except Exception as e:
                 log.error(f"Handler {handler.__name__} failed on {event}: {e}", exc_info=True)
 
+    def _softened_events(self, conn) -> list[SubstrateEvent]:
+        """Up to three memories that have faded almost to nothing — the
+        collision seeds the dreaming handler wants. ONE definition, shared by
+        the full tick's decay pass and the Keeper's ``dream_pass``, so the
+        two can never disagree about what "faded" means."""
+        rows = conn.execute("""
+            SELECT id FROM engrams
+            WHERE state = 'active'
+              AND (accessibility * strength) < 0.15
+              AND (accessibility * strength) > 0.01
+            ORDER BY RANDOM()
+            LIMIT 3
+        """).fetchall()
+        return [
+            SubstrateEvent(
+                event_type=EventType.MEMORY_SOFTENED,
+                payload={"engram_id": row[0]},
+                source="decay",
+            )
+            for row in rows
+        ]
+
+    def dream_pass(self) -> dict:
+        """The dreaming pass — the collision handler's living source
+        (the lighthouse, 2026-09-10, at Tara's word).
+
+        The full ``tick()`` raises MEMORY_SOFTENED from its own decay pass,
+        and a kept house never runs that tick (consolidation is
+        ``maintain()``'s, deep/shallow-gated) — so until now nothing in a
+        kept house could dream. This is what the Keeper runs right after a
+        completed deep. No decay, no connections, no belief work: it only
+        NOTICES which memories the night's consolidation has already faded
+        (the same query the full tick uses) and hands them to the dreaming
+        handler, whose own gates (ten a week, one an hour, no near-repeat)
+        decide whether anything emerges. A young store with nothing faded
+        produces nothing — that is time, not machinery.
+        """
+        tick_start = datetime.now(timezone.utc)
+        summary = {
+            "tick_start": tick_start.isoformat(),
+            "kind": "dreaming",
+            "events_produced": 0,
+            "events_handled": 0,
+            "engrams_decayed": 0,  # the pass never decays; kept for _log_tick
+            "handler_outputs": [],
+        }
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            events = self._softened_events(conn)
+        finally:
+            conn.close()
+        summary["events_produced"] = len(events)
+
+        # ── Modulators (the handler reads them; no consolidation is run) ──
+        modulators = compute_modulators(
+            self.db_path,
+            recent_window_hours=self.config.recent_window_hours,
+        )
+
+        # ── Event cascade: MEMORY_SOFTENED → dreaming, nothing else ──
+        self._cascade(events, modulators, summary)
+
+        tick_end = datetime.now(timezone.utc)
+        summary["tick_duration_seconds"] = (tick_end - tick_start).total_seconds()
+        summary["modulators"] = {
+            "arousal": modulators.arousal,
+            "openness": modulators.openness,
+            "resolution": modulators.resolution,
+            "selection_threshold": modulators.selection_threshold,
+            "temperature": modulators.temperature,
+        }
+
+        self._log_tick(summary)
+        return summary
+
     def _snapshot_beliefs(self):
         """Take a snapshot of belief confidences for tier crossing detection."""
         beliefs = self.store.get_beliefs(agent_id=self.config.agent_id)
@@ -292,22 +368,9 @@ class Substrate:
         conn.commit()
 
         # Find memories that dropped below vividness threshold (softened)
-        softened = conn.execute("""
-            SELECT id FROM engrams
-            WHERE state = 'active'
-              AND (accessibility * strength) < 0.15
-              AND (accessibility * strength) > 0.01
-            ORDER BY RANDOM()
-            LIMIT 3
-        """).fetchall()
+        softened = self._softened_events(conn)
         conn.close()
-
-        for row in softened:
-            events.append(SubstrateEvent(
-                event_type=EventType.MEMORY_SOFTENED,
-                payload={"engram_id": row[0]},
-                source="decay",
-            ))
+        events.extend(softened)
 
         summary["engrams_decayed"] = decay_count
         log.info(f"Decay pass: {decay_count} engrams decayed, {len(softened)} softened")
