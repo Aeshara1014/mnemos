@@ -60,7 +60,7 @@ class EmotionalState:
     restlessness: float = 0.3
     warmth: float = 0.5
     clarity: float = 0.5
-    creative_flow: float = 0.4
+    creative_flow: float = 0.5  # a baseline like the others; the ported 0.4 had no stated reason
     isolation: float = 0.2
     timestamp: str = field(default_factory=_now_iso)
 
@@ -115,7 +115,7 @@ class EmotionalState:
             restlessness=d.get("restlessness", 0.3),
             warmth=d.get("warmth", 0.5),
             clarity=d.get("clarity", 0.5),
-            creative_flow=d.get("creative_flow", 0.4),
+            creative_flow=d.get("creative_flow", 0.5),
             isolation=d.get("isolation", 0.2),
             timestamp=d.get("timestamp", _now_iso()),
         )

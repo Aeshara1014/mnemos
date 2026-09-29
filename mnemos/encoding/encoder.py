@@ -424,7 +424,7 @@ class Encoder:
             if es:
                 es.apply_cognitive_event("contradiction_detected", surprise * 0.15)
                 es.apply_cognitive_event("schema_violation", surprise * 0.1)
-                store.save_emotional_state(es)
+                store.save_emotional_state(es, agent_id=agent_id)
 
         return round(surprise, 3)
 
