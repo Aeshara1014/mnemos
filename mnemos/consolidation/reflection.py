@@ -156,6 +156,9 @@ def run_reflection_pass(
                 tags=["reflection", "synthesized"],
                 source=SourceType.REFLECTION,
                 agent_id=agent_id,
+                # Prevent feedback loops: a reflection examines beliefs, it is
+                # not evidence against them (matches substrate/handlers/reflection.py).
+                skip_surprise_detection=True,
             )
             stats["thoughts_generated"] += 1
 
