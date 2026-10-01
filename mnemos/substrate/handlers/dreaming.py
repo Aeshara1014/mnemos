@@ -169,7 +169,7 @@ If something does emerge, respond with:
     try:
         from mnemos.store.embedding_index import EmbeddingIndex
         ei = EmbeddingIndex(db_path=db_path)
-        if ei.available():
+        if ei.available:
             similar = ei.search(full_content, k=3)
             for engram_id, score in similar:
                 if score >= EMBEDDING_SIMILARITY_THRESHOLD:

@@ -180,3 +180,40 @@ def test_a_dissolved_collision_writes_nothing_and_signals_nothing(tmp_db, store)
     n = conn.execute("SELECT COUNT(*) FROM engrams WHERE content LIKE '[dream]%'").fetchone()[0]
     conn.close()
     assert n == 0
+
+
+def test_a_near_copy_of_an_old_dream_does_not_land(tmp_db, store, monkeypatch):
+    """Gate 2 (embedding similarity) was dead: `available` is a property, and
+    calling it raised inside a broad except, so near-copy dreams landed
+    (Croft review 2026-10-01). Now a dream too close to an old one is held."""
+    import mnemos.store.embedding_index as ei_mod
+
+    faded = _seed(store, tmp_db, "the first evening we talked about the lamp", 0.20, 0.50)
+    _seed(store, tmp_db, "she texted him from the phone line today", 1.0, 1.0)
+    old = _seed(store, tmp_db, "[dream] the lamp and the phone are one light", 0.9, 0.9)
+    conn = sqlite3.connect(tmp_db)        # two nights ago: past the time gate
+    conn.execute("UPDATE engrams SET created_at = datetime('now', '-2 days') WHERE id = ?", (old,))
+    conn.commit()
+    conn.close()
+
+    class _NearCopyIndex:
+        available = True        # a property on the real index: read, never called
+
+        def __init__(self, *a, **k):
+            pass
+
+        def search(self, query, k=10, exclude_ids=None):
+            return [(old, 0.93)]
+
+    monkeypatch.setattr(ei_mod, "EmbeddingIndex", _NearCopyIndex)
+    cfg = SubstrateConfig(agent_id=AGENT, agent_name=AGENT, db_path=tmp_db)
+    llm = _DreamLLM('{"dream": "the lamp and the phone are one light again", '
+                    '"significance": "the same light"}')
+
+    produced = dreaming.handle(_softened_event(faded), cfg, ModulatorState(), store, llm)
+
+    assert produced == []
+    conn = sqlite3.connect(tmp_db)
+    n = conn.execute("SELECT COUNT(*) FROM engrams WHERE content LIKE '[dream]%'").fetchone()[0]
+    conn.close()
+    assert n == 1          # only the old dream
