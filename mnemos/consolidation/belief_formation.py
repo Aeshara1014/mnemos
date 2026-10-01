@@ -63,6 +63,9 @@ _SUBSTRATE_SOURCES = ("substrate", "reflection", "consolidation", "dream",
 # loops" — the guardian's whisper hardened into his conviction overnight).
 _NOT_LIVED_SOURCES = _SUBSTRATE_SOURCES + OUTSIDE_VOICE_SOURCES
 
+# Below this confidence a belief no longer blocks a new wording of its idea.
+WORN_OUT = 0.3
+
 _SYSTEM_PROMPT = (
     "You are the memory consolidation substrate for an AI agent, running during "
     "deep sleep. Examine the agent's lived memories for recurring convictions — "
@@ -168,7 +171,12 @@ def run_belief_formation_pass(
 
     # ── Existing beliefs (context for the LLM, corpus for dedup) ──
     existing = store.get_beliefs(agent_id, active_only=True)
-    existing_statements = [b.content for b in existing if b.content]
+    # A worn-out belief (knocked below WORN_OUT) no longer guards its
+    # wording (2026-09-30): it stays on record, untouched, but the night
+    # may form a truer version of the same idea instead of being told
+    # "do not rephrase" by a conviction the evidence has already left.
+    existing_statements = [b.content for b in existing
+                           if b.content and b.confidence >= WORN_OUT]
 
     # ── One structured call: the LLM proposes, code disposes ──
     memory_lines = "\n".join(f"{e.id}: {e.content}" for e in lived)

@@ -66,6 +66,7 @@ def run_reflection_pass(
     emotional_state: EmotionalState,
     llm_client: Any | None,
     config: dict[str, Any] | None = None,
+    embedding_index: Any | None = None,
 ) -> dict[str, Any]:
     """Generate thoughts, curiosity questions, and update narrative self-summary.
 
@@ -146,7 +147,10 @@ def run_reflection_pass(
 
     # Encode thoughts as new engrams
     from ..encoding.encoder import Encoder
-    encoder = Encoder(store)
+    # A night thought is a memory like any other (2026-09-30): it gets the
+    # meaning index (so it can be found by meaning, not only by its words)
+    # and its links are judged by kind, not guessed.
+    encoder = Encoder(store, embedding_index=embedding_index, llm_client=llm_client)
 
     for thought in thought_lines[:max_thoughts]:
         if thought and len(thought.strip()) > 10:

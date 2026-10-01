@@ -160,6 +160,7 @@ class ConsolidationDaemon:
                         config=consolidation_config,
                         llm_client=self._llm_client,
                         agent_id=agent_id,
+                        embedding_index=self._embedding_index,
                     )
                     stats["softening"] = softening_stats
                     stats["passes_run"].append("softening")
@@ -218,6 +219,7 @@ class ConsolidationDaemon:
                         emotional_state=emotional_state,
                         llm_client=self._llm_client,
                         config=consolidation_config,
+                        embedding_index=self._embedding_index,
                     )
                     stats["reflection"] = reflection_stats
                     stats["passes_run"].append("reflection")

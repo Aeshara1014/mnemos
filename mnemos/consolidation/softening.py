@@ -78,6 +78,7 @@ def run_softening_pass(
     config: dict[str, Any],
     llm_client: Any | None,
     agent_id: str | None = None,
+    embedding_index: Any | None = None,
 ) -> dict[str, Any]:
     """Rewrite memories that have dropped below the resolution threshold.
 
@@ -260,7 +261,7 @@ def run_softening_pass(
             engram.impact, engram.content,
             getattr(engram, "content_at_encoding", "") or "",
         ):
-            lesson_id = _create_or_reinforce_lesson(engram, store, stats)
+            lesson_id = _create_or_reinforce_lesson(engram, store, stats, embedding_index)
         elif engram.impact:
             stats["lessons_withheld"] = stats.get("lessons_withheld", 0) + 1
 
@@ -486,6 +487,7 @@ def _create_or_reinforce_lesson(
     engram: Any,
     store: EngramStore,
     stats: dict,
+    embedding_index: Any | None = None,
 ) -> str | None:
     """Create or reinforce a lesson engram from the impact of a softened memory.
 
@@ -541,6 +543,13 @@ def _create_or_reinforce_lesson(
     )
 
     store.save_engram(lesson)
+    if embedding_index is not None:
+        # A new lesson joins the meaning index like any encoded memory
+        # (2026-09-30); a failed embed never costs the lesson itself.
+        try:
+            embedding_index.index_engram(lesson.id, lesson.content)
+        except Exception:
+            stats["lessons_unindexed"] = stats.get("lessons_unindexed", 0) + 1
     stats["lessons_created"] = stats.get("lessons_created", 0) + 1
     return lesson.id
 
