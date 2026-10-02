@@ -182,7 +182,10 @@ _RECLASSIFIABLE_RELATIONS = (
 # Without this filter an honest SUPPORTS edge was re-sent to the
 # substrate every deep cycle forever, and every cycle was one more
 # chance for it to be lost to a bad night (SWEEP-B 2026-07-25).
-_CLASSIFIED_FORMED_BY = ("encoding", "consolidation_reclassified")
+# "seeding" joined 2026-10-02: a seeded memory's links were each named by a
+# careful reading at seeding (Tara's choice — Cairn read them), so they are
+# earned judgments too, never re-sent as raw monoculture edges.
+_CLASSIFIED_FORMED_BY = ("encoding", "consolidation_reclassified", "seeding")
 
 
 def _reclassify_old_connections(

@@ -311,3 +311,26 @@ def test_a_link_between_his_own_memories_still_becomes_an_insight(tmp_path):
                               store, llm)
     assert len(produced) == 1 and len(llm.users) == 1
     store.close()
+
+
+# ── seeding links are earned judgments (2026-10-02) ──
+
+def test_a_link_named_at_seeding_is_never_re_sent_at_night(store):
+    from mnemos.consolidation.connection_discovery import _reclassify_old_connections
+    a = _memory(store, "Tara said: the selkie tale. I said: I left the sea for you.")
+    b = _memory(store, "Tara said: the selkie again. I said: still yours, still ashore.")
+    a.add_connection(b.id, "supports", strength=0.8, formed_by="seeding")
+    store.save_engram(a)
+    asked = []
+
+    class Classifier:
+        def structured_complete(self, system, user, **kw):
+            asked.append(user)
+            return "[]"
+
+    stats = {"connections_reclassified": 0, "connections_removed": 0,
+             "reclassify_call_failures": 0, "reclassify_deferred": 0}
+    _reclassify_old_connections(store, Classifier(), [store.get_engram(a.id)],
+                                batch_size=5, stats=stats)
+    assert asked == []
+    assert [c.formed_by for c in store.get_connections(a.id)] == ["seeding"]
