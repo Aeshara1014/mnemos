@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from ..core.engram import Connection
 from ..core.types import ConnectionRelation, DEFAULT_AGENT_ID
 from ..encoding.llm_classifier import MIN_CONFIDENCE, classify_connections
+from ..retrieval.search_words import fts_query, telling_words
 
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
@@ -99,10 +100,12 @@ def run_connection_discovery(
                         candidates.append(candidate)
                         stats["embedding_candidates"] += 1
 
-        # 2. FTS5 candidates (supplement, catches keyword matches embeddings miss)
-        words = [w for w in engram.content.split() if len(w) > 2 and w.isalnum()]
+        # 2. FTS5 candidates (supplement, catches keyword matches embeddings
+        # miss) — by the memory's most telling words (Tara's ruling,
+        # 2026-10-02: punctuation cleaned, common words skipped, rarest first).
+        words = telling_words(engram.content, store)
         if words:
-            query = " OR ".join(f'"{w}"' for w in words[:8])
+            query = fts_query(words)
             try:
                 fts_results = store.search_fts(query, limit=10)
                 for match in fts_results:

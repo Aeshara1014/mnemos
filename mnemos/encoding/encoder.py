@@ -9,7 +9,9 @@ connections to related memories.
 from __future__ import annotations
 
 import math
+import sqlite3
 from datetime import datetime, timezone, timedelta
+from itertools import zip_longest
 from typing import TYPE_CHECKING
 
 from ..core.engram import Connection, Engram, EncodingContext, MemorySource
@@ -26,6 +28,7 @@ from ..core.types import (
     SourceType,
     Visibility,
 )
+from ..retrieval.search_words import fts_query, telling_words
 from .llm_classifier import (
     classify_connections,
     evaluate_beliefs,
@@ -447,19 +450,36 @@ class Encoder:
         """
         connections: list[Connection] = []
 
-        # 1. FTS search for content similarity — find candidates
-        words = [w for w in engram.content.split() if len(w) > 2 and w.isalnum()]
-        if not words:
-            return []
-
-        search_query = " OR ".join(f'"{w}"' for w in words[:8])
+        # 1. Candidates (Tara's ruling, 2026-10-02 — the linking flaw): the
+        # memory's most telling words, punctuation cleaned off rather than
+        # the word thrown away, common words skipped, the rarest first
+        # (search_words.py); and, beside them, the memories closest in
+        # MEANING. Interleaved, one of each in turn, ten at most — the same
+        # size of ask as before, so the cost of a classification is unchanged.
+        words = telling_words(engram.content, store)
         try:
-            fts_results = store.search_fts(search_query, limit=10)
-        except (ValueError, OSError):
-            fts_results = []
-
-        # Filter out self
-        fts_candidates = [r for r in fts_results if r.id != engram.id]
+            word_hits = store.search_fts(fts_query(words), limit=10) if words else []
+        except (ValueError, OSError, sqlite3.Error):
+            word_hits = []
+        meaning_hits: list[Engram] = []
+        index = self._embedding_index
+        if index is not None and getattr(index, "available", False):
+            try:
+                for eid, score in index.search(engram.content, k=10,
+                                               exclude_ids={engram.id}):
+                    if score > 0.3:
+                        hit = store.get_engram(eid)
+                        if hit is not None:
+                            meaning_hits.append(hit)
+            except Exception:  # noqa: BLE001 — a meaning-search failure never breaks encoding
+                meaning_hits = []
+        fts_candidates: list[Engram] = []
+        seen_ids = {engram.id}
+        for pair in zip_longest(meaning_hits, word_hits):
+            for hit in pair:
+                if hit is not None and hit.id not in seen_ids and len(fts_candidates) < 10:
+                    seen_ids.add(hit.id)
+                    fts_candidates.append(hit)
 
         # 2. Classify relationships via LLM (or fallback to SUPPORTS)
         if self._llm_client and fts_candidates:

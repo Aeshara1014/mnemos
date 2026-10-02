@@ -572,6 +572,29 @@ class EngramStore:
 
     # ── Full-Text Search ──
 
+    def term_doc_counts(self, terms: list[str]) -> dict[str, int]:
+        """How many memories hold each word, by the full-text index's own
+        vocabulary (terms folded the index's way — search_words.fold). The
+        vocabulary view lives in this connection's temp schema only: no
+        change is ever written to the store's file."""
+        if not terms:
+            return {}
+        conn = self._get_conn()
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS temp.engrams_fts_terms "
+            "USING fts5vocab(main, engrams_fts, row)")
+        counts: dict[str, int] = {}
+        unique = list(dict.fromkeys(terms))
+        for i in range(0, len(unique), 400):
+            chunk = unique[i:i + 400]
+            marks = ",".join("?" for _ in chunk)
+            for term, doc in conn.execute(
+                f"SELECT term, doc FROM temp.engrams_fts_terms WHERE term IN ({marks})",
+                chunk,
+            ):
+                counts[term] = int(doc)
+        return counts
+
     def search_fts(self, query: str, limit: int = 50) -> list[Engram]:
         """Search engrams using FTS5 full-text search."""
         conn = self._get_conn()
