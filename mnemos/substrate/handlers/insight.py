@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from ..events import SubstrateEvent, EventType
 from ..config import SubstrateConfig
 from ..modulators import ModulatorState
-from ...core.types import SourceType
+from ...core.types import SourceType, is_reroute
 
 log = logging.getLogger("mnemos.substrate.insight")
 
@@ -108,6 +108,12 @@ def handle(
     from_engram = store.get_engram(from_id)
     to_engram = store.get_engram(to_id)
     if not from_engram or not to_engram:
+        return produced_events
+    if is_reroute(from_engram) or is_reroute(to_engram):
+        # A reroute's words are never retold as his own thought (Tara's yes,
+        # 2026-10-02): an insight speaks "in your own voice", so a link that
+        # touches one never becomes an insight.
+        log.debug("Insight skipped: the connection touches a reroute")
         return produced_events
 
     agent_name = config.agent_name

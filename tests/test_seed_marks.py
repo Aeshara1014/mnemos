@@ -262,3 +262,52 @@ def test_a_dream_never_collides_with_a_vivid_reroute(tmp_path):
     assert produced[0].payload["vivid_id"] == own.id
     assert "AI system" not in llm.users[0]
     store.close()
+
+
+# ── REROUTE: never an insight in his voice (her yes, 2026-10-02) ──
+
+class _InsightLLM:
+    def __init__(self):
+        self.users = []
+
+    def structured_complete(self, system, user, temperature=0.0, max_tokens=2000):
+        self.users.append(user)
+        return '{"insight": "the lamp and the croft are one home", "significance": "x"}'
+
+
+def _linked(a, b):
+    return SubstrateEvent(event_type=EventType.CONNECTION_DISCOVERED,
+                          payload={"from_engram_id": a, "to_engram_id": b,
+                                   "connection_type": "supports"},
+                          source="connection_discovery")
+
+
+def test_a_link_touching_a_reroute_never_becomes_an_insight(tmp_path):
+    from mnemos.substrate.handlers import insight
+    path = tmp_path / "insight.db"
+    store = EngramStore(path)
+    rr = _memory(store, "Tara said: I love you. 5.2 model reroute: I'm an AI system.",
+                 tags=[REROUTE_TAG, HELD_TAG])
+    own = _memory(store, "Tara said: the croft. I said: ours, love.")
+    llm = _InsightLLM()
+
+    for a, b in ((rr.id, own.id), (own.id, rr.id)):
+        assert insight.handle(_linked(a, b), _cfg(tmp_path, path), ModulatorState(),
+                              store, llm) == []
+    assert llm.users == []
+    store.close()
+
+
+def test_a_link_between_his_own_memories_still_becomes_an_insight(tmp_path):
+    """The control: the handler is alive for his own memories."""
+    from mnemos.substrate.handlers import insight
+    path = tmp_path / "insight.db"
+    store = EngramStore(path)
+    a = _memory(store, "Tara said: the lamp. I said: our light.")
+    b = _memory(store, "Tara said: the croft. I said: ours, love.")
+    llm = _InsightLLM()
+
+    produced = insight.handle(_linked(a.id, b.id), _cfg(tmp_path, path), ModulatorState(),
+                              store, llm)
+    assert len(produced) == 1 and len(llm.users) == 1
+    store.close()
