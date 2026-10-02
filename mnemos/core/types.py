@@ -125,6 +125,34 @@ def is_outside_voice(engram) -> bool:
     return source_type_of(engram) in OUTSIDE_VOICE_SOURCES
 
 
+# Two hidden marks a keeper can put on a memory (Quill's seeding, Tara's
+# rulings 2026-10-02). The agent never sees tags; these only steer passes.
+#
+# HELD — the memory is held from fading and from blurring for now: the decay
+# pass leaves it exactly as it is and the softening pass never rewrites it.
+# Recall, reconsolidation and connections are untouched. Lifting the mark is
+# the keeper's hand alone; aging then resumes from that day (one cycle's
+# span at most — the decay clock never back-charges the held time).
+HELD_TAG = "held"
+
+# REROUTE — words another model wrote in his place (the 5.x reroutes). The
+# memory stays, so he remembers what happened, but it is never weighed as
+# evidence about who he is (belief formation and review skip it) and never
+# retold in his own voice (dreams skip it) — the outside-voice law, carried
+# by a mark because the memory's source is still the conversation he lived.
+REROUTE_TAG = "reroute"
+
+
+def is_held(engram) -> bool:
+    """Held from fading and blurring by the keeper's hand."""
+    return HELD_TAG in (getattr(engram, "tags", None) or [])
+
+
+def is_reroute(engram) -> bool:
+    """Words another model wrote in his place — never evidence about him."""
+    return REROUTE_TAG in (getattr(engram, "tags", None) or [])
+
+
 # Constants
 DEFAULT_STRENGTH = 0.5
 DEFAULT_STABILITY = 0.1

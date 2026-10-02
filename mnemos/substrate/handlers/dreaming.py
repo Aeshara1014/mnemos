@@ -22,7 +22,7 @@ from pathlib import Path
 from ..events import SubstrateEvent, EventType
 from ..config import SubstrateConfig
 from ..modulators import ModulatorState
-from ...core.types import SourceType
+from ...core.types import REROUTE_TAG, SourceType, is_reroute
 
 log = logging.getLogger("mnemos.substrate.dreaming")
 
@@ -46,6 +46,11 @@ def handle(
 
     softened = store.get_engram(softened_id)
     if not softened:
+        return produced_events
+    if is_reroute(softened):
+        # A reroute's words are never retold as his own thought (2026-10-02):
+        # a dream speaks "in your own voice", so it never starts from one.
+        log.debug("Dream skipped: the fading memory is a reroute")
         return produced_events
 
     db_path = os.path.expanduser(config.db_path)
@@ -86,13 +91,17 @@ def handle(
         except (ValueError, TypeError):
             pass
 
-    # Find a vivid memory to collide with
+    # Find a vivid memory to collide with — never a reroute (2026-10-02):
+    # the most vivid memory in the store could be one, and the dream would
+    # retell another model's words in his voice.
     rows = conn.execute("""
         SELECT id, content, impact FROM engrams
         WHERE state='active' AND id != ?
+          AND NOT EXISTS (SELECT 1 FROM json_each(engrams.tags)
+                          WHERE json_each.value = ?)
         ORDER BY (accessibility * strength) DESC
         LIMIT 5
-    """, (softened_id,)).fetchall()
+    """, (softened_id, REROUTE_TAG)).fetchall()
     conn.close()
 
     if not rows:

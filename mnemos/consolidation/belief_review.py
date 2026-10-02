@@ -27,7 +27,7 @@ from ..encoding.llm_classifier import evaluate_beliefs, apply_belief_update
 # the same rule written twice was fixed once — belief_formation's guard
 # worked, this file's copy compared a dataclass to a word and never
 # fired, for any resident, ever).
-from ..core.types import OUTSIDE_VOICE_SOURCES, source_type_of
+from ..core.types import OUTSIDE_VOICE_SOURCES, is_reroute, source_type_of
 from .belief_formation import _SUBSTRATE_SOURCES
 
 if TYPE_CHECKING:
@@ -121,6 +121,10 @@ def run_belief_review(
         # either — another mind said it TO him (2026-09-08).
         if kind in OUTSIDE_VOICE_SOURCES:
             stats["skipped_outside_voice"] += 1
+            continue
+        # Nor is a reroute — another model's words in his place (2026-10-02).
+        if is_reroute(engram):
+            stats["skipped_reroute"] = stats.get("skipped_reroute", 0) + 1
             continue
 
         # Skip if this engram already had surprise detection during encoding

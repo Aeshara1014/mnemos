@@ -29,6 +29,8 @@ import math
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from ..core.types import is_held
+
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
 
@@ -92,6 +94,7 @@ def run_decay_pass(
         "engrams_archived": 0,
         "at_fade_gate": 0,
         "fade_proposals": 0,
+        "held": 0,
         "avg_accessibility_before": 0.0,
         "avg_accessibility_after": 0.0,
         "cycle_span_hours": round(cycle_span, 2),
@@ -105,6 +108,12 @@ def run_decay_pass(
     total_after = 0.0
 
     for engram in engrams:
+        if is_held(engram):
+            # HELD (Tara's hand, 2026-10-02): no fading while the mark is
+            # on — accessibility, strength, stability and state stay exactly
+            # as they are, and nothing is written back.
+            stats["held"] += 1
+            continue
         stats["engrams_processed"] += 1
         total_before += engram.accessibility
 

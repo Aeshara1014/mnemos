@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 import ulid as _ulid_mod
 
-from ..core.types import is_outside_voice
+from ..core.types import is_held, is_outside_voice
 from ..core.types import ConnectionRelation, EngramKind, SourceType
 
 if TYPE_CHECKING:
@@ -132,6 +132,12 @@ def run_softening_pass(
     for engram in all_engrams:
         if engram.resolution <= minimum_resolution:
             continue  # Already at minimum resolution
+
+        if is_held(engram):
+            # HELD (Tara's hand, 2026-10-02): his words are never rewritten
+            # while the mark is on — no blur at any accessibility.
+            stats["skipped_held"] = stats.get("skipped_held", 0) + 1
+            continue
 
         if is_outside_voice(engram):
             # Quoted, never paraphrased (2026-09-08): the softener rewrites

@@ -37,7 +37,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..core.belief import Belief
-from ..core.types import DEFAULT_AGENT_ID, OUTSIDE_VOICE_SOURCES, source_type_of
+from ..core.types import DEFAULT_AGENT_ID, OUTSIDE_VOICE_SOURCES, is_reroute, source_type_of
 from ..encoding.llm_classifier import _extract_json
 
 if TYPE_CHECKING:
@@ -159,6 +159,11 @@ def run_belief_formation_pass(
             continue
         if kind in OUTSIDE_VOICE_SOURCES:
             stats["skipped_outside_voice"] += 1
+            continue
+        # A reroute's words were another model writing in his place
+        # (2026-10-02) — remembered, never evidence about who he is.
+        if is_reroute(engram):
+            stats["skipped_reroute"] = stats.get("skipped_reroute", 0) + 1
             continue
         lived.append(engram)
     stats["memories_considered"] = len(lived)
