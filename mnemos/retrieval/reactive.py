@@ -9,10 +9,14 @@ and what lights up after N hops is what's relevant.
 The graph structure IS the relevance model. No formula needed.
 
 Pipeline:
-1. FTS search → seed nodes
-2. Spreading activation through connection graph (3 hops)
+1. FTS (by the cue's telling words) + meaning search → seed nodes, each
+   starting by how well it matches (Tara's ruling 2026-10-03: every seed
+   used to start at 1.0, so the most-linked cluster outvoted the memory
+   she meant — 30% exact recall on Quill's seeded memories)
+2. Spreading activation through connection graph (3 hops, links pass a
+   quarter of their old strength)
 3. Emotional bias applied multiplicatively
-4. Threshold → return activated engrams
+4. Threshold → the best ~30, re-read by the reranker, which sets the order
 5. Reconsolidation on all returned engrams
 """
 
@@ -28,6 +32,7 @@ from ..core.engram import Engram
 from ..core.emotional_state import EmotionalState
 from ..core.types import ConnectionRelation
 from .reconsolidation import reconsolidate
+from .search_words import fts_query, telling_words
 
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
@@ -41,6 +46,18 @@ class RetrievalResult:
     score: float = 0.0
     score_breakdown: dict[str, float] = field(default_factory=dict)
     retrieval_path: str = "fts"
+
+
+# How much of a link's strength passes along it (Tara's ruling 2026-10-03).
+# At full strength links pulled well-linked memories past the one she meant;
+# a quarter keeps neighbours coming along without outvoting the best match.
+LINK_PULL = 0.25
+# How many of recall's best the reranker re-reads.
+RERANK_POOL = 30
+# Seeds the word search and the meaning search each offer.
+FTS_SEEDS = 30
+MEANING_SEEDS = 20
+MEANING_FLOOR = 0.3
 
 
 # Activation weights by connection relation type
@@ -83,6 +100,9 @@ class ReactiveRetriever:
         activation_threshold: float = 0.1,
         reconsolidation_enabled: bool = True,
         confidence_floor: float = 0.3,
+        link_pull: float = LINK_PULL,
+        reranker: Any | None = "default",
+        rerank_pool: int = RERANK_POOL,
     ) -> None:
         self._store = store
         self._embedding_index = embedding_index
@@ -92,6 +112,12 @@ class ReactiveRetriever:
         self._threshold = activation_threshold
         self._reconsolidation_enabled = reconsolidation_enabled
         self._confidence_floor = confidence_floor
+        self._link_pull = link_pull
+        if reranker == "default":
+            from .rerank import default_reranker
+            reranker = default_reranker()
+        self._reranker = reranker
+        self._rerank_pool = rerank_pool
 
     def retrieve(
         self,
@@ -103,49 +129,73 @@ class ReactiveRetriever:
         """Retrieve memories via resonance — spreading activation through the graph.
 
         Pipeline:
-        1. FTS search → seed nodes (entry points into the graph)
-        2. Spreading activation (3 hops, decay per hop, weighted by relation)
+        1. FTS (telling words) + meaning search → seed nodes, each starting
+           by how well it matches
+        2. Spreading activation (3 hops, decay per hop, weighted by relation,
+           a quarter of the link's strength)
         3. Emotional bias (multiplicative boost for congruent tags)
-        4. Filter by threshold + confidence floor
+        4. Filter by threshold + confidence floor; the reranker re-reads the
+           best `rerank_pool` and sets their order
         5. Reconsolidate returned engrams
 
         Returns:
-            List of RetrievalResult sorted by activation level (descending).
+            List of RetrievalResult in the reranker's order when it runs,
+            else by activation level (descending).
         """
         if not cue or not cue.strip():
             return []
 
-        # 1. SEED: Find entry points via FTS + embeddings
+        # 1. SEED: Find entry points via FTS + embeddings. Each seed starts
+        # by how well it matches — the better of its word rank and its
+        # meaning closeness — never all alike.
         seeds: dict[str, Engram] = {}
+        start: dict[str, float] = {}
 
-        # FTS seeds (keyword matching)
-        fts_query = _to_fts_query(cue)
-        fts_results = self._store.search_fts(fts_query, limit=30)
+        # FTS seeds by the cue's telling words (punctuation cleaned, common
+        # words skipped, rarest first — the linking fix, Tara 2026-10-02)
+        words = telling_words(cue, self._store)
+        fts_q = fts_query(words) if words else _to_fts_query(cue)
+        fts_results = self._store.search_fts(fts_q, limit=FTS_SEEDS)
+        fts_rank = 0
         for engram in fts_results:
             if engram.owner_agent_id == agent_id:
                 seeds[engram.id] = engram
+                start[engram.id] = 1.0 - fts_rank / FTS_SEEDS
+                fts_rank += 1
 
         # Shared DB seeds (cross-agent shared memories)
         if self._shared_store:
             try:
-                shared_fts = self._shared_store.search_fts(fts_query, limit=20)
-                for engram in shared_fts:
+                shared_fts = self._shared_store.search_fts(fts_q, limit=20)
+                for r, engram in enumerate(shared_fts):
                     if engram.visibility in ("shared", "public") and engram.id not in seeds:
                         seeds[engram.id] = engram
+                        start[engram.id] = 1.0 - r / FTS_SEEDS
             except Exception:
                 pass  # Shared store is optional
 
-        # Embedding seeds (meaning matching — finds what FTS misses)
+        # Embedding seeds (meaning matching — finds what FTS misses), and
+        # every seed's meaning closeness against the best one for this cue
         if self._embedding_index and hasattr(self._embedding_index, 'search'):
             try:
-                embedding_hits = self._embedding_index.search(
-                    cue, k=20, exclude_ids=set(seeds.keys())
-                )
-                for eid, similarity in embedding_hits:
-                    if similarity > 0.3 and eid not in seeds:  # Threshold for relevance
-                        engram = self._store.get_engram(eid)
-                        if engram and engram.state == "active" and engram.owner_agent_id == agent_id:
-                            seeds[eid] = engram
+                ranked = self._embedding_index.search(cue, k=FTS_SEEDS * 4)
+                sims = dict(ranked)
+                best = ranked[0][1] if ranked else 1.0
+                span = max(1e-6, best - MEANING_FLOOR)
+                offered = 0
+                for eid, similarity in ranked:
+                    if offered >= MEANING_SEEDS:
+                        break
+                    if eid in seeds or similarity <= MEANING_FLOOR:
+                        continue
+                    engram = self._store.get_engram(eid)
+                    if engram and engram.state == "active" and engram.owner_agent_id == agent_id:
+                        seeds[eid] = engram
+                        start[eid] = 0.0
+                        offered += 1
+                for eid in seeds:
+                    closeness = min(1.0, max(0.0, (sims.get(eid, MEANING_FLOOR) - MEANING_FLOOR) / span))
+                    start[eid] = max(start.get(eid, 0.0), closeness)
             except Exception:
                 pass  # Embeddings are optional — FTS still works
 
@@ -155,9 +205,10 @@ class ReactiveRetriever:
         # 2. PROPAGATE: Spreading activation through connection graph
         activation: dict[str, float] = {}
 
-        # Seeds start at activation 1.0
+        # Seeds start by how well they match (floor at the threshold, so
+        # a seed is never lost before it can be weighed)
         for seed_id in seeds:
-            activation[seed_id] = 1.0
+            activation[seed_id] = max(self._threshold, start.get(seed_id, 1.0))
 
         # Spread through connections
         for hop in range(1, self._depth + 1):
@@ -178,7 +229,8 @@ class ReactiveRetriever:
                 for conn in connections:
                     # Weight by relation type
                     relation_weight = _RELATION_WEIGHTS.get(conn.relation, 0.5)
-                    propagated = current_act * hop_decay * conn.strength * relation_weight
+                    propagated = (current_act * hop_decay * conn.strength
+                                  * relation_weight * self._link_pull)
 
                     if propagated > self._threshold * 0.5:
                         new_activation[conn.target_id] += propagated
@@ -235,6 +287,17 @@ class ReactiveRetriever:
 
         # Sort by activation level
         results.sort(key=lambda r: r.score, reverse=True)
+
+        # 4b. RERANK: the reranker re-reads the best few beside the cue and
+        # sets their order (activation stays on each result as its score).
+        if self._reranker is not None and len(results) > 1:
+            pool = results[: self._rerank_pool]
+            scores = self._reranker.scores(cue, [r.engram.content for r in pool])
+            if scores is not None:
+                for r, s in zip(pool, scores):
+                    r.score_breakdown["rerank"] = round(s, 4)
+                order = sorted(range(len(pool)), key=lambda i: -scores[i])
+                results = [pool[i] for i in order] + results[self._rerank_pool:]
         top_results = results[:max_results]
 
         # 5. RECONSOLIDATE returned engrams
