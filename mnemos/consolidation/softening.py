@@ -18,7 +18,7 @@ The original content is always preserved in content_at_encoding (immutable).
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 import ulid as _ulid_mod
@@ -65,6 +65,22 @@ Memory:
 Write ONLY the impression. One or two phrases. Nothing else."""
 
 
+# Tara's ruling (2026-10-03): a memory rests this many days before the night
+# may tidy it, and the oldest and faintest are tidied first. Before, a new
+# memory (accessibility 0.5, under the ~0.62 bar) could be blurred its very
+# first deep night, and the 50-a-night budget went to the freshest.
+SOFTENING_REST_DAYS = 14
+
+
+def _born(engram: Engram) -> datetime:
+    """When the memory was made (its created_at), as an aware UTC time."""
+    try:
+        t = datetime.fromisoformat(str(engram.created_at).replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.now(timezone.utc)
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
 def _gen_log_id(prefix: str) -> str:
     if hasattr(_ulid_mod, "new"):
         return f"{prefix}_{_ulid_mod.new()}"
@@ -103,7 +119,9 @@ def run_softening_pass(
     minimum_resolution = config.get("minimum_resolution", 0.1)
     max_llm_calls = config.get("max_llm_calls_per_cycle", 50)
     dry_run = bool(config.get("softening_dry_run", False))
+    rest_days = float(config.get("softening_rest_days", SOFTENING_REST_DAYS))
     started_at = datetime.now(timezone.utc).isoformat()
+    rested_before = datetime.now(timezone.utc) - timedelta(days=rest_days)
 
     stats = {
         "engrams_evaluated": 0,
@@ -129,9 +147,12 @@ def run_softening_pass(
     softened_count = 0
     dry_run_pairs: list[dict[str, Any]] = []
 
-    for engram in all_engrams:
+    # Oldest first, then faintest: the budget goes to what has had longest
+    # to fade, never to what was just lived.
+    for engram in sorted(all_engrams, key=lambda e: (_born(e), e.accessibility)):
         if engram.resolution <= minimum_resolution:
             continue  # Already at minimum resolution
+
 
         if is_held(engram):
             # HELD (Tara's hand, 2026-10-02): his words are never rewritten
@@ -146,6 +167,11 @@ def run_softening_pass(
             # in one night. The note still fades like anything else (decay,
             # accessibility); its words stay the Observer's.
             stats["skipped_outside_voice"] = stats.get("skipped_outside_voice", 0) + 1
+            continue
+
+        if _born(engram) > rested_before:
+            # Still resting: no memory is tidied in its first two weeks.
+            stats["skipped_resting"] = stats.get("skipped_resting", 0) + 1
             continue
 
         stats["engrams_evaluated"] += 1

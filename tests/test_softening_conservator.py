@@ -59,6 +59,7 @@ def _engram(agent: str, content: str, *, accessibility: float = 0.5,
     )
     e.accessibility = accessibility
     e.resolution = resolution
+    e.created_at = "2025-01-01T12:00:00+00:00"  # long past its two weeks' rest
     return e
 
 

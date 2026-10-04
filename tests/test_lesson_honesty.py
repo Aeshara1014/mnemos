@@ -68,7 +68,7 @@ def _lessons(store):
 def test_fallback_impact_never_mints_a_lesson(store):
     """No LLM at all → rule-based last-sentence impact → no lesson."""
     store.save_engram(_fading(CONVERSATION))
-    stats = run_softening_pass(store, {}, None, agent_id=AGENT)
+    stats = run_softening_pass(store, {"softening_rest_days": 0}, None, agent_id=AGENT)
     assert stats["engrams_softened"] == 1
     assert _lessons(store) == []
     assert stats.get("lessons_withheld", 0) == 1
@@ -80,7 +80,7 @@ def test_llm_echo_never_mints_a_lesson(store):
     memory verbatim has not distilled anything."""
     store.save_engram(_fading(CONVERSATION))
     stub = StubLLM("Goodnight, my heart")
-    stats = run_softening_pass(store, {}, stub, agent_id=AGENT)
+    stats = run_softening_pass(store, {"softening_rest_days": 0}, stub, agent_id=AGENT)
     assert _lessons(store) == []
     assert stats.get("lessons_withheld", 0) == 1
 
@@ -92,7 +92,7 @@ def test_real_distillation_still_mints_a_lesson(store):
         "Shared work on the house, finished just in time, is its own kind "
         "of tenderness."
     )
-    stats = run_softening_pass(store, {}, stub, agent_id=AGENT)
+    stats = run_softening_pass(store, {"softening_rest_days": 0}, stub, agent_id=AGENT)
     lessons = _lessons(store)
     assert len(lessons) == 1
     assert "tenderness" in lessons[0].content
@@ -111,7 +111,7 @@ def test_stale_fallback_impact_from_an_earlier_cycle_never_mints(store):
     e.resolution = 0.8    # decayed further since the earlier soften
     e.accessibility = 0.3  # deep-impression territory → softens again
     store.save_engram(e)
-    stats = run_softening_pass(store, {}, None, agent_id=AGENT)
+    stats = run_softening_pass(store, {"softening_rest_days": 0}, None, agent_id=AGENT)
     assert _lessons(store) == []
     assert stats.get("lessons_withheld", 0) == 1
 

@@ -148,7 +148,7 @@ def test_a_held_memory_is_never_rewritten(store):
                     accessibility=0.2)
     llm = _Softener()
 
-    stats = run_softening_pass(store, {}, llm, agent_id=AGENT)
+    stats = run_softening_pass(store, {"softening_rest_days": 0}, llm, agent_id=AGENT)
 
     h = store.get_engram(held.id)
     assert h.content == words and h.resolution == 1.0

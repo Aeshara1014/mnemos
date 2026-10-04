@@ -84,6 +84,7 @@ DEFAULT_CONFIG: dict = {
         "softening_enabled": True,
         "softening_threshold": 0.15,
         "minimum_resolution": 0.1,
+        "softening_rest_days": 14,          # a memory rests this long before tidying (Tara, 2026-10-03)
         "resolution_step": 0.3,
 
         # Belief review
