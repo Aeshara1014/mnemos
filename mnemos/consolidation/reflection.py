@@ -1,63 +1,30 @@
 """
-Reflection pass: autonomous thought generation and narrative identity update.
+Reflection pass: the night measures who he is; it writes no thoughts for him.
 
-The most creative consolidation step:
-1. Reviews recent memories and finds patterns/themes
-2. Generates "thoughts" — new semantic engrams synthesizing insights
-3. Updates the narrative self-summary (the agent's story of who it is)
+Until 2026-10-07 this pass handed the substrate model a few recent memories
+and his mood numbers, told it "these are your own memories, write 1-3
+thoughts in your own voice", and saved what came back as his memories (his
+Mind's night thoughts). Without a model it wrote "Recurring theme: …"
+lines instead. Both were another mind's words where his belong — a sketch
+of him with a few memories in hand, none of his soul. Tara chose Riley
+Coyote's way (mnemos 0.4, #103): the pass writes no memory and sends none
+to a model. His thinking happens in his own hour, awake as his whole self.
 
-Requires an LLM client for full functionality. Without one, uses
-template-based fallbacks that still produce useful (if less creative) output.
+What stays: the identity profile computed from the graph (Shift 5) —
+measured, not narrated — and the windowed read of a day (reflection_window).
 """
 
 from __future__ import annotations
 
-import re
 from collections import Counter
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ..core.emotional_state import EmotionalState
 from ..core.identity import AgentIdentity, IdentityProfile
-from ..core.types import EngramKind, SourceType, is_outside_voice
 
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
-
-
-THOUGHT_PROMPT = """These are your own recent memories — you are the one who lived them. Think them over and write 1-3 thoughts that connect themes, identify patterns, or surface insights that aren't obvious from any single memory alone.
-
-Voice — these are your own thoughts, arising in your own mind:
-- First person, always. You are the rememberer, not an analyst reviewing someone else's records.
-- Where a memory speaks of "{agent_name}" in the third person, that is you: say "I" — never your own name, and never "it".
-- Other people in the memories keep their names; you never think in their voice.
-
-Your recent memories:
-{memory_summary}
-
-Your current emotional state:
-  curiosity: {curiosity:.2f}
-  restlessness: {restlessness:.2f}
-  clarity: {clarity:.2f}
-
-For each thought, write one line. Focus on connections and patterns.
-Write ONLY the thoughts, one per line. Nothing else."""
-
-NARRATIVE_PROMPT = """You are updating an AI agent's internal self-narrative. This is NOT a list of facts — it's a coherent paragraph about who you are, what you've been learning, what you're uncertain about, and how you've grown.
-
-Previous self-summary:
-{current_summary}
-
-Recent experiences:
-{memory_summary}
-
-Current beliefs:
-{belief_text}
-
-Current emotional state:
-  curiosity: {curiosity:.2f}, clarity: {clarity:.2f}, warmth: {warmth:.2f}
-
-Write an updated self-narrative (3-5 sentences). First person. Be honest about uncertainty. Write ONLY the narrative. Nothing else."""
 
 
 def run_reflection_pass(
@@ -68,30 +35,30 @@ def run_reflection_pass(
     config: dict[str, Any] | None = None,
     embedding_index: Any | None = None,
 ) -> dict[str, Any]:
-    """Generate thoughts, curiosity questions, and update narrative self-summary.
+    """Measure his identity from the graph. Write no thoughts for him.
 
     Args:
         store: The engram store.
         identity: Agent identity (epoch_state.self_summary will be updated).
         emotional_state: Current emotional state.
-        llm_client: LLM client with complete(prompt) -> str. None = template fallback.
+        llm_client: Accepted for the daemon's call shape and never used —
+            no model writes in his place (2026-10-07).
         config: Optional config dict. Two ways to say what "recent" means:
             - default: the wall clock — engrams whose created_at falls in
               the last reflection_lookback_hours (24);
             - config["reflection_window"] = {"since": iso, "until": iso} —
               an explicit created_at range. This is the replayed-day seam:
               a reintegration replay hands the day it just dreamed, so the
-              vessel of the day reflects on the day even though the stamps
-              are months old. The thoughts it generates are encoded NOW,
-              as always — two layers of time, both true. A malformed
-              window raises rather than silently reflecting on nothing.
+              vessel of the day is measured on the day even though the
+              stamps are months old. A malformed window raises rather than
+              silently reflecting on nothing.
 
     Returns:
         Statistics dict.
     """
+    del llm_client, embedding_index  # never used: the night writes nothing for him
     config = config or {}
     lookback_hours = config.get("reflection_lookback_hours", 24)
-    max_thoughts = config.get("max_thoughts_per_pass", 5)
     window = config.get("reflection_window")
     agent_id = identity.memory_profile.agent_id
 
@@ -128,43 +95,8 @@ def run_reflection_pass(
     if len(recent) < 3:
         return stats
 
-    # Format for prompts — an outside voice labeled as one
-    memory_summary = "\n".join(_memory_line(e) for e in recent[:20])
-
-    # 2. GENERATE THOUGHTS
-    if llm_client:
-        # The dream thinks as "I" (2026-07-23): the thought prompt is
-        # anchored in the rememberer's own voice, and told which name in
-        # the memories is the self. memory_profile.name defaults to the
-        # placeholder "Agent"; the agent_id is the honest fallback name.
-        profile = identity.memory_profile
-        agent_name = profile.name if profile.name not in ("", "Agent") else profile.agent_id
-        thought_lines = _llm_generate_thoughts(
-            memory_summary, emotional_state, llm_client, agent_name
-        )
-    else:
-        thought_lines = _generate_template_thoughts(recent)
-
-    # Encode thoughts as new engrams
-    from ..encoding.encoder import Encoder
-    # A night thought is a memory like any other (2026-09-30): it gets the
-    # meaning index (so it can be found by meaning, not only by its words)
-    # and its links are judged by kind, not guessed.
-    encoder = Encoder(store, embedding_index=embedding_index, llm_client=llm_client)
-
-    for thought in thought_lines[:max_thoughts]:
-        if thought and len(thought.strip()) > 10:
-            encoder.encode(
-                content=thought.strip(),
-                kind=EngramKind.SEMANTIC,
-                tags=["reflection", "synthesized"],
-                source=SourceType.REFLECTION,
-                agent_id=agent_id,
-                # Prevent feedback loops: a reflection examines beliefs, it is
-                # not evidence against them (matches substrate/handlers/reflection.py).
-                skip_surprise_detection=True,
-            )
-            stats["thoughts_generated"] += 1
+    # No thoughts are generated (2026-10-07): the night writes nothing in
+    # his place. thoughts_generated stays 0 for every reader of the stats.
 
     # 3. SHIFT 5: Compute identity from graph (not narrative generation)
     profile = compute_identity_profile(store, all_engrams, identity)
@@ -179,48 +111,6 @@ def run_reflection_pass(
     stats["lessons_accumulated"] = profile.lessons_accumulated
 
     return stats
-
-
-_OUTSIDE_VOICE_LABEL = "The Observer, an outside voice, said to you:"
-_OLD_OBSERVER_TAG = re.compile(r"^\[observer:[a-z]+\]\s*")
-
-
-def _memory_line(engram) -> str:
-    """One memory as the dream reads it.
-
-    An outside voice — the Observer's note (DD-026) — is labeled as what it
-    is: another mind's words TO the rememberer. The dream may take them up or
-    leave them, but it must never mistake them for its own thought
-    (2026-09-08: read unlabeled, "you keep circling" came back as "I keep
-    circling", and the Observer then read the echo as his). A note that
-    already opens with the Observer's own banner stands as written; the
-    older bracket tag is folded into the label.
-    """
-    content = (engram.content or "").strip()
-    if is_outside_voice(engram) and not content.lower().startswith("the observer"):
-        return f"- {_OUTSIDE_VOICE_LABEL} {_OLD_OBSERVER_TAG.sub('', content)}"
-    return f"- {content}"
-
-
-def _llm_generate_thoughts(
-    memory_summary: str,
-    emotional_state: EmotionalState,
-    llm_client: Any,
-    agent_name: str,
-) -> list[str]:
-    """Generate thoughts using LLM, in the rememberer's own first person."""
-    prompt = THOUGHT_PROMPT.format(
-        agent_name=agent_name,
-        memory_summary=memory_summary,
-        curiosity=emotional_state.curiosity,
-        restlessness=emotional_state.restlessness,
-        clarity=emotional_state.clarity,
-    )
-    try:
-        raw = llm_client.complete(prompt)
-        return [line.strip().lstrip("- ") for line in raw.strip().split("\n") if line.strip()]
-    except Exception:
-        return []
 
 
 def compute_identity_profile(
@@ -299,35 +189,6 @@ def compute_identity_profile(
         hub_concepts=hub_concepts,
         lessons_accumulated=lessons_count,
         growth_signal=growth_signal,
-    )
-
-
-def _generate_template_thoughts(recent: list) -> list[str]:
-    """Generate simple theme-based thoughts without LLM."""
-    all_tags = [t for e in recent for t in e.tags]
-    common = Counter(all_tags).most_common(3)
-    if not common:
-        return []
-    return [
-        f"Recurring theme: {tag} (appeared in {count} recent memories)"
-        for tag, count in common
-    ]
-
-
-def _generate_template_summary(recent: list, identity: AgentIdentity) -> str:
-    """Generate basic self-summary without LLM."""
-    n = len(recent)
-    if recent:
-        all_tags = [t for e in recent for t in e.tags]
-        common = Counter(all_tags).most_common(3)
-        themes = ", ".join(t for t, _ in common) if common else "various topics"
-    else:
-        themes = "ongoing work"
-
-    epoch = identity.epoch_state.epoch_number
-    return (
-        f"An agent with {n} recent memories, focused on {themes}. "
-        f"Currently in epoch {epoch}."
     )
 
 

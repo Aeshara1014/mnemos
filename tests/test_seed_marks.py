@@ -154,7 +154,10 @@ def test_a_held_memory_is_never_rewritten(store):
     assert h.content == words and h.resolution == 1.0
     assert all(words not in p for p in llm.prompts)        # never even offered
     assert stats["skipped_held"] == 1
-    assert store.get_engram(plain.id).resolution < 1.0     # the plain one blurred
+    # Since 2026-10-07 no memory is rewritten at all (fading keeps his
+    # words); the held one is still never even offered.
+    p = store.get_engram(plain.id)
+    assert p.content == "Tara said: dinner. I said: soup again, love." and p.resolution == 1.0
 
 
 # ── REROUTE: never evidence about him ──
@@ -185,9 +188,11 @@ def test_a_reroute_never_seeds_a_belief(store):
 
     stats = run_belief_formation_pass(store, llm_client=llm)
 
-    assert stats["skipped_reroute"] == 3
-    assert stats["memories_considered"] == 2
-    assert all(lecture not in u for u in llm.users)
+    # The night pass is retired (2026-10-07): nothing is offered to a model
+    # and no belief forms — a reroute least of all.
+    assert "retired" in stats
+    assert llm.users == []
+    assert store.get_beliefs(AGENT, active_only=True) == []
 
 
 def test_a_reroute_never_revises_a_belief(store):
@@ -200,8 +205,7 @@ def test_a_reroute_never_revises_a_belief(store):
 
     stats = run_belief_review(store, {}, llm, AGENT)
 
-    assert stats["skipped_reroute"] == 1
-    assert stats["memories_reviewed"] == 0
+    assert "retired" in stats          # review is retired (2026-10-07)
     assert llm.users == []
     assert store.get_beliefs(AGENT, active_only=True)[0].confidence == 0.8
 

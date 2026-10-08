@@ -5,12 +5,18 @@ Runs cycles either on schedule (cron) or on-demand. Each cycle runs
 enabled passes in a defined order:
 
 Shallow cycle (every 4h): connection_discovery → decay
-Deep cycle (daily):        connection_discovery → decay → softening → belief_review → reflection
+Deep cycle (daily):        connection_discovery → decay → softening → reflection
 
 Order matters — connection discovery runs first because new connections
 affect decay scoring. Decay runs before softening because accessibility
-determines what gets softened. Reflection runs last to reflect on the
+determines what has gone faint. Reflection runs last to measure the
 processed state.
+
+No pass writes in the agent's place (Tara's ruling, 2026-10-07; Riley
+Coyote's mnemos 0.4): softening counts the faint and rewrites nothing,
+reflection measures and writes no thoughts, and belief review and belief
+formation are retired — a belief is born and moved only by the agent's
+own verdict.
 """
 
 from __future__ import annotations
@@ -33,8 +39,6 @@ from ..core.identity import AgentIdentity
 from .connection_discovery import run_connection_discovery
 from .decay import run_decay_pass
 from .softening import run_softening_pass
-from .belief_formation import run_belief_formation_pass
-from .belief_review import run_belief_review
 from .reflection import run_reflection_pass
 
 
@@ -64,11 +68,10 @@ class ConsolidationDaemon:
         Args:
             store: The engram store to consolidate.
             config: Configuration dict (consolidation section from defaults).
-            llm_client: LLM client for classification, softening, reflection.
-                Must support structured_complete() for classifier and
-                complete() for reflection/softening.
-                If None, classification falls back to SUPPORTS, belief review
-                is a no-op.
+            llm_client: LLM client for classifying links (structured_complete).
+                It writes no memory: softening and reflection never call it.
+                If None, classification falls back to SUPPORTS and the deep
+                cycle downgrades to shallow.
             embedding_index: Embedding index for semantic search in connection
                 discovery. If None, uses FTS5 only.
             agent_model_hint: The agent's self-declared model (e.g. from
@@ -167,37 +170,10 @@ class ConsolidationDaemon:
                 except Exception as e:
                     stats["softening_error"] = str(e)
 
-            # ── PASS 4: Belief Review ──
-            if consolidation_config.get("belief_review_enabled", True):
-                try:
-                    belief_stats = run_belief_review(
-                        store=self._store,
-                        config=consolidation_config,
-                        llm_client=self._llm_client,
-                        agent_id=agent_id,
-                    )
-                    stats["belief_review"] = belief_stats
-                    stats["passes_run"].append("belief_review")
-                except Exception as e:
-                    stats["belief_review_error"] = str(e)
+            # Belief review and belief formation are retired (2026-10-07):
+            # a belief is born and moved only by the agent's own verdict.
 
-            # ── PASS 5: Belief Formation ──
-            # After review (existing beliefs stress-tested first), before
-            # reflection (a newborn belief can be part of the night's story).
-            if consolidation_config.get("belief_formation_enabled", True):
-                try:
-                    formation_stats = run_belief_formation_pass(
-                        store=self._store,
-                        config=consolidation_config,
-                        llm_client=self._llm_client,
-                        agent_id=agent_id,
-                    )
-                    stats["belief_formation"] = formation_stats
-                    stats["passes_run"].append("belief_formation")
-                except Exception as e:
-                    stats["belief_formation_error"] = str(e)
-
-            # ── PASS 6: Reflection ──
+            # ── PASS 4: Reflection ──
             if consolidation_config.get("reflection_enabled", True):
                 try:
                     identity = self._store.get_identity(agent_id)

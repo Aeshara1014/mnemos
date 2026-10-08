@@ -12,7 +12,6 @@ The two-layer law rides along untouched: whatever window selected the
 memories, the THOUGHTS the pass generates are encoded now — new engrams
 with today's stamp, about then."""
 
-from datetime import datetime, timezone
 
 import pytest
 
@@ -63,7 +62,9 @@ def test_window_hands_reflection_its_day(store):
                                 llm_client=None,
                                 config={"reflection_window": WINDOW})
     assert stats["engrams_reviewed"] == 4
-    assert stats["thoughts_generated"] >= 1
+    assert stats["identity_computed"] is True
+    # The night writes no thoughts for him (2026-10-07), windowed or not.
+    assert stats["thoughts_generated"] == 0
 
 
 def test_window_bounds_are_honored_not_widened(store):
@@ -74,22 +75,6 @@ def test_window_bounds_are_honored_not_widened(store):
                                 llm_client=None,
                                 config={"reflection_window": elsewhere})
     assert stats["engrams_reviewed"] == 0
-
-
-def test_windowed_thoughts_are_encoded_now_about_then(store):
-    """The two-layer law: the memories reviewed wear March; the thoughts
-    generated wear today."""
-    _seed_march_day(store)
-    run_reflection_pass(store, _identity(), EmotionalState(),
-                        llm_client=None,
-                        config={"reflection_window": WINDOW})
-    thoughts = [e for e in store.get_active_engrams(agent_id="claw", limit=50)
-                if "synthesized" in e.tags]
-    assert thoughts
-    today = datetime.now(timezone.utc).date().isoformat()
-    for t in thoughts:
-        assert t.created_at[:10] == today
-        assert t.source.type == "reflection"
 
 
 def test_malformed_window_raises_instead_of_reflecting_on_nothing(store):

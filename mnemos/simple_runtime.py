@@ -1108,7 +1108,9 @@ class MnemosRuntime:
                 continue
             engram = self._encoder.encode(
                 content=entry["content"],
-                impact="Stable continuity promoted during simple maintenance.",
+                # No engine words in his lesson slot (2026-10-07): the
+                # impact stays empty until he says what it taught him.
+                impact="",
                 kind="semantic",
                 tags=["continuity", "promoted", *entry.get("tags", [])],
                 source=SourceType.BACKGROUND,

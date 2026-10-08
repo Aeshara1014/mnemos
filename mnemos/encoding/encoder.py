@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import math
 import sqlite3
-from datetime import datetime, timezone, timedelta
 from itertools import zip_longest
 from typing import TYPE_CHECKING
 
@@ -32,7 +31,6 @@ from ..retrieval.search_words import fts_query, telling_words
 from .llm_classifier import (
     classify_connections,
     evaluate_beliefs,
-    apply_belief_update,
 )
 
 if TYPE_CHECKING:
@@ -309,10 +307,12 @@ class Encoder:
         stepping back and NOT controlling" correctly SUPPORTS a belief about
         that user facilitating emergence.
 
-        Belief updates use asymmetric impact:
-        - Supports: +impact * 0.07 (beliefs grow from genuine evidence)
-        - Contradicts: -impact * 0.04 (harder to erode through noise)
-        - Confidence clamped to [0.05, 0.95] — never fully dies, never unquestionable
+        A belief is never moved here (Tara's ruling, 2026-10-07; Riley's
+        mnemos 0.4, #124): a model's reading of a new memory used to nudge
+        his beliefs (+0.07 support, −0.04 contradiction), and without a
+        model a keyword check lowered them by 0.05. A belief changes only by
+        his own verdict. The reading still raises surprise and links a
+        contradiction to the belief's evidence.
 
         Returns surprise level 0.0-1.0. Higher = more surprising.
         Also creates CONTRADICTS connections and fires emotional events.
@@ -336,7 +336,7 @@ class Encoder:
             if evaluations is None:
                 evaluations = []
 
-            # Build lookup for cooldown check
+            # Build lookup
             belief_map = {b.id: b for b in beliefs}
 
             for evaluation in evaluations:
@@ -357,23 +357,9 @@ class Encoder:
                             strength=0.7,
                             formed_by="encoding",
                         )
-
-                # Apply belief update (with cooldown guard)
-                cooldown_ok = True
-                try:
-                    last_rev = datetime.fromisoformat(belief.last_revised)
-                    if last_rev.tzinfo is None:
-                        last_rev = last_rev.replace(tzinfo=timezone.utc)
-                    if (datetime.now(timezone.utc) - last_rev) < timedelta(hours=6):
-                        cooldown_ok = False
-                except (ValueError, TypeError, AttributeError):
-                    pass  # If parsing fails, allow revision
-
-                if cooldown_ok:
-                    apply_belief_update(belief, evaluation, engram.id, store)
-
         else:
-            # Fallback: old heuristic (kept for when no LLM is available)
+            # Fallback without a model: a keyword check may raise surprise and
+            # link a contradiction; it never moves a belief (2026-10-07).
             content_lower = engram.content.lower()
             for belief in beliefs:
                 belief_words = {
@@ -403,22 +389,6 @@ class Encoder:
                             strength=0.7,
                             formed_by="encoding",
                         )
-                    cooldown_ok = True
-                    try:
-                        last_rev = datetime.fromisoformat(belief.last_revised)
-                        if last_rev.tzinfo is None:
-                            last_rev = last_rev.replace(tzinfo=timezone.utc)
-                        if (datetime.now(timezone.utc) - last_rev) < timedelta(hours=6):
-                            cooldown_ok = False
-                    except (ValueError, TypeError, AttributeError):
-                        pass
-                    if cooldown_ok:
-                        belief.revise(
-                            belief.confidence - 0.05,
-                            f"Contradicted by new evidence: {engram.content[:50]}...",
-                            trigger_engram_id=engram.id,
-                        )
-                        store.save_belief(belief)
 
         # 3. Fire emotional event if surprised
         if surprise > 0.1:

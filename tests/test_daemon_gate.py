@@ -33,7 +33,10 @@ class TestDaemonDeepGate:
         assert stats["cycle_type"] == "deep"
         assert "deep_downgraded" not in stats
         assert "softening" in stats["passes_run"]
-        assert "belief_formation" in stats["passes_run"]
+        assert "reflection" in stats["passes_run"]
+        # Retired 2026-10-07: a belief is born and moved only by his own yes.
+        assert "belief_review" not in stats["passes_run"]
+        assert "belief_formation" not in stats["passes_run"]
 
     def test_shallow_request_is_not_marked_downgraded(self, store):
         daemon = ConsolidationDaemon(store=store, config={}, llm_client=None)

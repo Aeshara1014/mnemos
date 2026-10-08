@@ -1,49 +1,27 @@
 """
-Belief formation pass: recurring patterns across lived memories become new beliefs.
+Belief formation: retired as a night pass (Tara's ruling, 2026-10-07).
 
-Mnemos has always had the full downstream ladder for beliefs — evaluation of new
-evidence against them (encoder + belief_review), revision with asymmetric impact,
-contradiction handling, stagnation flagging — but no organic way for a belief to
-be *born*. Before this pass, the only beliefs in the store were onboarding
-templates. This is the missing rung: during deep sleep, memories that express
-the same conviction across separate moments graduate into a Belief.
+During deep sleep this pass had the substrate model read his lived memories,
+spot a conviction recurring across days, and write it down as a new belief
+— his, without anyone asking him. Tara chose Riley Coyote's way (mnemos 0.4,
+#82, #111): when an idea keeps coming back in his own words, HE is asked,
+with his words quoted back, "Is this a belief you hold?" — and only his yes
+makes it one. That asking door is part 2, designed with Tara; until it
+exists, no belief is born for him.
 
-Design guards (this pass rewrites who the agent is — it earns its caution):
-
-- LLM required. Without a client the pass is a no-op, like belief_review.
-  Rule-based belief formation would be a stranger guessing at convictions.
-- Lived memories only. Substrate-generated engrams (reflections, consolidation
-  narratives) are skipped — the same feedback-loop guard belief_review uses.
-  The agent believes what it lived, not what its sleep muttered. An outside
-  voice (the Observer's notes) is skipped for the same reason from the other
-  side: what another mind said to him is not what he lived.
-- Conservative by contract. The prompt instructs that most nights form nothing;
-  every candidate must be grounded in several distinct memories, and formation
-  is capped per cycle. Beliefs accrete slowly or they mean nothing.
-- Mechanically validated. The LLM proposes; code disposes. Supporting ids must
-  exist among the offered memories, meet a minimum count, and span at least
-  two distinct days (default) — a conviction recurs across days, not within a
-  single sitting; even a re-emerging mind is given the time to sit with things
-  before they become belief. Near-duplicates of existing beliefs are dropped.
-- Born tentative, with a birth certificate. New beliefs start at the model's
-  tentative floor and are immediately revised to the (capped) suggested
-  confidence, so revision_history opens with a full account of the formation:
-  when, from how many memories, and why.
+Kept: the guards on what may ever ground a belief (never the substrate
+talking to itself, never an outside voice, never a reroute) — the asking
+door will need the same lines.
 """
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
-from ..core.belief import Belief
-from ..core.types import DEFAULT_AGENT_ID, OUTSIDE_VOICE_SOURCES, is_reroute, source_type_of
-from ..encoding.llm_classifier import _extract_json
+from ..core.types import DEFAULT_AGENT_ID, OUTSIDE_VOICE_SOURCES
 
 if TYPE_CHECKING:
     from ..store.sqlite_store import EngramStore
-
-log = logging.getLogger("mnemos.consolidation.belief_formation")
 
 # Sources that must never seed a belief — substrate talking to itself.
 # Stricter than belief_review's guard: dreams are also excluded here, because
@@ -65,17 +43,6 @@ _NOT_LIVED_SOURCES = _SUBSTRATE_SOURCES + OUTSIDE_VOICE_SOURCES
 
 # Below this confidence a belief no longer blocks a new wording of its idea.
 WORN_OUT = 0.3
-
-_SYSTEM_PROMPT = (
-    "You are the memory consolidation substrate for an AI agent, running during "
-    "deep sleep. Examine the agent's lived memories for recurring convictions — "
-    "patterns experienced repeatedly, across separate moments, that have earned "
-    "belief-hood. Be conservative: most nights form no new beliefs. Only propose "
-    "a belief when several distinct memories independently express the same "
-    "underlying conviction, and never duplicate or rephrase an existing belief. "
-    "Respond ONLY with a JSON array."
-)
-
 
 def _distinct_days(engrams: list) -> int:
     """Count distinct calendar days across engrams' created_at timestamps."""
@@ -101,167 +68,15 @@ def _is_duplicate(statement: str, existing_statements: list[str]) -> bool:
     return False
 
 
+RETIRED = "belief formation retired: a belief is born only of his own yes (2026-10-07)"
+
+
 def run_belief_formation_pass(
     store: EngramStore,
     config: dict[str, Any] | None = None,
     llm_client: Any | None = None,
     agent_id: str = DEFAULT_AGENT_ID,
 ) -> dict[str, Any]:
-    """Form new beliefs from recurring patterns across lived memories.
-
-    Runs after belief_review (the old beliefs are stress-tested first) and
-    before reflection (so a newborn belief can be part of the night's story).
-    Newborn beliefs skip same-cycle review; they meet the review pass on the
-    next deep cycle, like any other belief.
-
-    Args:
-        store: Engram store.
-        config: Consolidation config (belief_formation_* keys).
-        llm_client: LLM client. Without this, the pass is a no-op —
-            no rule-based fallback, by design.
-        agent_id: Agent whose memories are examined.
-
-    Returns:
-        Statistics dict.
-    """
-    config = config or {}
-    max_per_cycle = config.get("belief_formation_max_per_cycle", 2)
-    min_supporting = config.get("belief_formation_min_supporting", 3)
-    min_distinct_days = config.get("belief_formation_min_distinct_days", 2)
-    max_memories = config.get("belief_formation_max_memories", 60)
-    max_candidates = config.get("belief_formation_max_candidates", 5)
-    confidence_cap = config.get("belief_formation_confidence_cap", 0.6)
-
-    stats = {
-        "memories_considered": 0,
-        "skipped_substrate": 0,
-        "skipped_outside_voice": 0,
-        "candidates_proposed": 0,
-        "beliefs_formed": 0,
-        "skipped_duplicate": 0,
-        "skipped_insufficient_support": 0,
-        "skipped_day_span": 0,
-    }
-
-    if not llm_client:
-        log.info("No LLM client — belief formation skipped (no rule-based fallback, by design)")
-        return stats
-
-    # ── Gather lived memories ──
-    engrams = store.get_active_engrams(
-        agent_id=agent_id, limit=max_memories, load_connections=False
-    )
-    lived = []
-    for engram in engrams:
-        kind = source_type_of(engram)
-        if kind in _SUBSTRATE_SOURCES:
-            stats["skipped_substrate"] += 1
-            continue
-        if kind in OUTSIDE_VOICE_SOURCES:
-            stats["skipped_outside_voice"] += 1
-            continue
-        # A reroute's words were another model writing in his place
-        # (2026-10-02) — remembered, never evidence about who he is.
-        if is_reroute(engram):
-            stats["skipped_reroute"] = stats.get("skipped_reroute", 0) + 1
-            continue
-        lived.append(engram)
-    stats["memories_considered"] = len(lived)
-
-    if len(lived) < min_supporting:
-        log.info("Only %d lived memories — not enough to form anything", len(lived))
-        return stats
-
-    by_id = {e.id: e for e in lived}
-
-    # ── Existing beliefs (context for the LLM, corpus for dedup) ──
-    existing = store.get_beliefs(agent_id, active_only=True)
-    # A worn-out belief (knocked below WORN_OUT) no longer guards its
-    # wording (2026-09-30): it stays on record, untouched, but the night
-    # may form a truer version of the same idea instead of being told
-    # "do not rephrase" by a conviction the evidence has already left.
-    existing_statements = [b.content for b in existing
-                           if b.content and b.confidence >= WORN_OUT]
-
-    # ── One structured call: the LLM proposes, code disposes ──
-    memory_lines = "\n".join(f"{e.id}: {e.content}" for e in lived)
-    belief_lines = "\n".join(f"- {s}" for s in existing_statements) or "(none)"
-    user_prompt = (
-        f"LIVED MEMORIES (id: content):\n{memory_lines}\n\n"
-        f"EXISTING BELIEFS (do not duplicate or rephrase these):\n{belief_lines}\n\n"
-        f"Propose at most {max_candidates} new beliefs as a JSON array:\n"
-        '[{"statement": "first-person conviction, one sentence", '
-        '"confidence": 0.3-0.6, '
-        '"domain": "general|self|social|technical|project", '
-        '"supporting_ids": ["engram_..."], '
-        '"reasoning": "one line: what recurs across these memories"}]\n'
-        "Return [] if nothing has earned belief-hood."
-    )
-
-    try:
-        raw = llm_client.structured_complete(
-            system=_SYSTEM_PROMPT, user=user_prompt, temperature=0.2, max_tokens=1500
-        )
-        candidates = _extract_json(raw)
-    except Exception as e:
-        log.warning("Belief formation LLM call failed: %s", e)
-        stats["formation_error"] = str(e)
-        return stats
-
-    stats["candidates_proposed"] = len(candidates)
-
-    # ── Mechanical validation ──
-    formed_statements: list[str] = []
-    for candidate in candidates:
-        if stats["beliefs_formed"] >= max_per_cycle:
-            break
-        if not isinstance(candidate, dict):
-            continue
-
-        statement = str(candidate.get("statement", "")).strip()
-        if not statement or len(statement) > 300:
-            continue
-
-        # Supporting ids must be real, offered memories — no hallucinated evidence.
-        proposed_ids = candidate.get("supporting_ids") or []
-        supporting = [by_id[i] for i in proposed_ids if i in by_id]
-        if len(supporting) < min_supporting:
-            stats["skipped_insufficient_support"] += 1
-            continue
-
-        if _distinct_days(supporting) < min_distinct_days:
-            stats["skipped_day_span"] += 1
-            continue
-
-        if _is_duplicate(statement, existing_statements + formed_statements):
-            stats["skipped_duplicate"] += 1
-            continue
-
-        try:
-            suggested = float(candidate.get("confidence", 0.4))
-        except (TypeError, ValueError):
-            suggested = 0.4
-        confidence = max(0.3, min(confidence_cap, suggested))
-
-        belief = Belief(
-            agent_id=agent_id,
-            content=statement,
-            confidence=0.3,  # tentative floor; the revise below is the birth certificate
-            domain=str(candidate.get("domain", "general")) or "general",
-            supporting_engram_ids=[e.id for e in supporting],
-        )
-        reason = (
-            f"Formed during deep consolidation from {len(supporting)} recurring "
-            f"memories: {str(candidate.get('reasoning', '')).strip() or 'pattern held across moments'}"
-        )
-        belief.revise(confidence, reason, trigger_engram_id=supporting[0].id)
-        store.save_belief(belief)
-
-        formed_statements.append(statement)
-        stats["beliefs_formed"] += 1
-        log.info(
-            "Belief formed (%.2f, %d supporting): %s",
-            belief.confidence, len(supporting), statement,
-        )
-
-    return stats
+    """Retired. Forms nothing, calls no model, and says so."""
+    del store, config, llm_client, agent_id
+    return {"memories_considered": 0, "beliefs_formed": 0, "retired": RETIRED}
