@@ -14,8 +14,8 @@ law runs for every resident (one code copy).
 
 So the pass now rewrites nothing, calls no model and mints no lesson. It
 only counts what has gone faint, for the record. What a fading memory
-taught will be asked of HIM, by a door designed with Tara (part 2);
-until that door exists, nothing is written in his place.
+taught is asked of HIM, by the asking door (part 2, asking.py);
+nothing is written in his place.
 
 The original content is always preserved in content_at_encoding (immutable);
 memories blurred before this ruling keep their lineage, and the
@@ -134,10 +134,10 @@ def _calculate_target_resolution(accessibility: float) -> float:
         return 0.0
 
 
-# ── Kept for the asking door (part 2) ──
-# When he says what a fading memory taught him, his own words become the
-# memory's impact, and a lesson is minted or reinforced from them. Nothing
-# calls these today.
+# ── Kept from the old pass; nothing calls these today ──
+# The asking door (part 2, mnemos/consolidation/asking.py + the house) took
+# another road: what a fading memory taught him becomes a NEW memory in his
+# words, linked to it, and the faint memory itself is never touched.
 
 def _is_real_distillation(impact: str, *texts: str) -> bool:
     """A lesson may only be born from a real distillation.
