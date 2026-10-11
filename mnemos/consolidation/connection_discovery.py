@@ -72,6 +72,10 @@ def run_connection_discovery(
         "discovery_call_failures": 0,
         "reclassify_call_failures": 0,
         "reclassify_deferred": 0,
+        # Beside the failures, the calls made — so a night can be told as
+        # "50 of 50 link calls failed" (Croft re-check #35, 2026-10-10).
+        "discovery_calls": 0,
+        "reclassify_calls": 0,
     }
 
     all_active = store.get_active_engrams(agent_id=agent_id, limit=max_per_pass * 2)
@@ -123,6 +127,7 @@ def run_connection_discovery(
         # 3. Classify relationships via LLM (or fallback)
         if llm_client:
             classifications = classify_connections(llm_client, engram, candidates)
+            stats["discovery_calls"] += 1
             if classifications is None:
                 # The call failed (law 9): mint nothing from it, and say so.
                 stats["discovery_call_failures"] += 1
@@ -243,6 +248,7 @@ def _reclassify_old_connections(
         verdicts = classify_connections(llm_client, engram, targets,
                                         include_verdicts=True)
         calls_made += 1
+        stats["reclassify_calls"] += 1
 
         if verdicts is None:
             # The call failed. Not one edge may be touched on its account.
