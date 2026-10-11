@@ -231,6 +231,12 @@ def classify_connections(
     except Exception as e:
         log.error("Connection classification LLM call failed: %s", e)
         return None  # a failed call is not an empty answer (law 9)
+    if not isinstance(raw_response, str) or not raw_response.strip():
+        # No content at all (a safety block, a reply that was all
+        # reasoning) is a failed call too: it costs the links, never the
+        # memory (Croft review #34, 2026-10-10).
+        log.error("Connection classification LLM call returned no content")
+        return None
 
     # Parse response
     return _parse_connection_response(raw_response, candidates,
@@ -318,6 +324,9 @@ def evaluate_beliefs(
         except Exception as e:
             log.error("Belief evaluation LLM call failed: %s", e)
             return None  # a failed call is not "no bearing" (law 9)
+        if not isinstance(raw_response, str) or not raw_response.strip():
+            log.error("Belief evaluation LLM call returned no content")
+            return None  # no content is a failed call too (review #34)
 
         # Parse against this chunk only — a verdict naming a belief from
         # another chunk is the model confused, not evidence.
