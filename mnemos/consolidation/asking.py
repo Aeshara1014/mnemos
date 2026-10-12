@@ -107,7 +107,12 @@ def fading_memories(
     minimum_resolution = config.get("minimum_resolution", 0.1)
     now = now or datetime.now(timezone.utc)
     found = [
-        e for e in store.get_active_engrams(agent_id=agent_id, limit=5000)
+        # Every active memory, faintest first, no cut (review #39,
+        # 2026-10-11): a 5,000 cap took the brightest and left the faintest
+        # unasked once he had more than that.
+        e for e in store.get_active_engrams(agent_id=agent_id, limit=-1,
+                                            load_connections=False,
+                                            faintest_first=True)
         if e.id not in exclude_ids
         and askable(e)
         and is_faint(e, now=now, rest_days=rest_days,

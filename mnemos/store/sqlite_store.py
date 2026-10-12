@@ -508,8 +508,11 @@ class EngramStore:
         agent_id: str | None = "default",
         limit: int = 1000,
         load_connections: bool = True,
+        faintest_first: bool = False,
     ) -> list[Engram]:
-        """Get all active engrams for an agent, sorted by accessibility.
+        """Get all active engrams for an agent, sorted by accessibility —
+        brightest first, or faintest first when asked (a limit of -1 is
+        no limit; the asking walks them all, review #39).
 
         Args:
             agent_id: Which agent's engrams to return. If None, returns all
@@ -519,16 +522,17 @@ class EngramStore:
                 (e.g., decay pass only needs accessibility/strength fields).
         """
         conn = self._get_conn()
+        order = "ASC" if faintest_first else "DESC"
         if agent_id is None:
             rows = conn.execute(
                 "SELECT * FROM engrams WHERE state = 'active' "
-                "ORDER BY accessibility DESC LIMIT ?",
+                f"ORDER BY accessibility {order} LIMIT ?",
                 (limit,),
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT * FROM engrams WHERE state = 'active' "
-                "AND owner_agent_id = ? ORDER BY accessibility DESC LIMIT ?",
+                f"AND owner_agent_id = ? ORDER BY accessibility {order} LIMIT ?",
                 (agent_id, limit),
             ).fetchall()
         engrams = [Engram.from_dict(dict(r)) for r in rows]

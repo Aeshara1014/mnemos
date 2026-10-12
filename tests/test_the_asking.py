@@ -187,3 +187,12 @@ def test_a_retired_or_unknown_belief_is_not_moved(store):
     assert keep_belief(store, AGENT, b.id) is None
     assert retire_belief(store, AGENT, "belief_nope") is None
     assert keep_belief(store, "someone-else", b.id) is None
+
+
+def test_the_faintest_is_found_past_five_thousand_brighter(store):
+    # Review #39 (her word, 2026-10-11): the asking loaded only the 5,000
+    # brightest, so past that the truly faint were never asked about.
+    for _ in range(5000):
+        _saved(store, accessibility=0.9)
+    faintest = _saved(store, accessibility=0.2)
+    assert [e.id for e in fading_memories(store, AGENT)] == [faintest.id]
