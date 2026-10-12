@@ -69,6 +69,7 @@ def _stats():
         "connections_removed": 0,
         "reclassify_call_failures": 0,
         "reclassify_deferred": 0,
+        "reclassify_calls": 0,   # the pass's own counter since 4732ce3 (re-check #35)
     }
 
 
