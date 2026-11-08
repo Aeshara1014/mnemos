@@ -39,6 +39,11 @@ def reconsolidate(
     becomes temporarily labile and is re-stored with updates based on
     the current retrieval context.
 
+    The update is applied to the engram as ``store`` holds it, reloaded by
+    ID, not to the object passed in: a word-search result carries no
+    connections or versions, and saving one of those back would reset the
+    links and history it is missing.
+
     Effects:
     1. Access metadata updated (count, timestamp)
     2. Strength increased (retrieval strengthens storage)
@@ -58,8 +63,16 @@ def reconsolidate(
         accessibility_floor: Minimum accessibility after retrieval.
 
     Returns:
-        The updated engram after reconsolidation.
+        The updated engram after reconsolidation: the reloaded object when
+        the store has it, so not necessarily the one passed in.
     """
+    # 0. Reload the whole memory. A word-search seed arrives without links
+    # or history; saving it back reset grown links to 0.3 and overwrote
+    # version 1 (Riley's 31ee34c). Only a memory not yet stored is used as given.
+    stored = store.get_engram(engram.id)
+    if stored is not None:
+        engram = stored
+
     # 1. Access metadata
     engram.record_access()
     engram.reconsolidation_count += 1
