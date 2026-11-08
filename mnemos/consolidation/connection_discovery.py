@@ -78,6 +78,15 @@ def run_connection_discovery(
         "reclassify_calls": 0,
     }
 
+    # Judged links only (Tara's word, Nov 7 2026). With unjudged_links off
+    # and no model to judge, the pass makes nothing and has nothing to
+    # re-sort, so it does not search at all. On Quill's store the no-model
+    # pass linked the same five memories every afternoon and the morning's
+    # model removed all 27 links, a loop that took the re-sort's calls.
+    if llm_client is None and not config.get("unjudged_links", True):
+        stats["skipped"] = "no model to judge links, and unjudged links are off"
+        return stats
+
     all_active = store.get_active_engrams(agent_id=agent_id, limit=max_per_pass * 2)
 
     # ── Phase A: Discover new connections for underconnected engrams ──
