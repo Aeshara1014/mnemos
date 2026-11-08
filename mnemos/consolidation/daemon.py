@@ -70,7 +70,7 @@ class ConsolidationDaemon:
             config: Configuration dict (consolidation section from defaults).
             llm_client: LLM client for classifying links (structured_complete).
                 It writes no memory: softening and reflection never call it.
-                If None, classification falls back to SUPPORTS and the deep
+                If None, classification falls back to CO_ACTIVATED and the deep
                 cycle downgrades to shallow.
             embedding_index: Embedding index for semantic search in connection
                 discovery. If None, uses FTS5 only.

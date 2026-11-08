@@ -412,7 +412,7 @@ class Encoder:
         1. FTS5 search for content overlap → find candidate engrams
         2. LLM classifier → classify each candidate relationship type
            (supports, contradicts, causes, extends, parallels, synthesizes, grounds)
-           Falls back to SUPPORTS if no LLM client available.
+           Falls back to CO_ACTIVATED (unjudged) if no LLM client available.
         3. Same session → TEMPORAL_AFTER connections (unchanged)
         4. NONE results from LLM → filter out FTS5 false positives
 
@@ -451,7 +451,7 @@ class Encoder:
                     seen_ids.add(hit.id)
                     fts_candidates.append(hit)
 
-        # 2. Classify relationships via LLM (or fallback to SUPPORTS)
+        # 2. Classify relationships via LLM (or fall back to CO_ACTIVATED)
         if self._llm_client and fts_candidates:
             # LLM-based classification — batched single call
             classifications = classify_connections(
@@ -495,7 +495,10 @@ class Encoder:
                         )
                     )
         else:
-            # Fallback: no LLM client → use old SUPPORTS behavior
+            # No model: a word or meaning match is correlation, not evidence.
+            # CO_ACTIVATED, and not stamped "encoding" (which the night treats
+            # as already judged), so a later pass may re-sort it (Riley's
+            # a0c424e; built here Nov 7 2026).
             for result in fts_candidates:
                 tag_overlap = len(set(engram.tags) & set(result.tags))
                 base_strength = 0.3
@@ -505,9 +508,9 @@ class Encoder:
                 connections.append(
                     Connection(
                         target_id=result.id,
-                        relation=ConnectionRelation.SUPPORTS,
+                        relation=ConnectionRelation.CO_ACTIVATED,
                         strength=base_strength,
-                        formed_by="encoding",
+                        formed_by="encoding_no_model",
                     )
                 )
 

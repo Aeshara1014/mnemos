@@ -148,15 +148,18 @@ def run_connection_discovery(
                 )
                 stats["connections_created"] += 1
         else:
-            # Fallback: old SUPPORTS behavior
+            # No model (every shallow pass): a word or meaning match is
+            # correlation, not evidence. CO_ACTIVATED, and a formed_by that
+            # says no model judged it, so a later pass may re-sort it
+            # (Riley's 638d3c2; built here Nov 7 2026).
             for match in candidates[:5]:
                 tag_overlap = len(set(engram.tags) & set(match.tags))
                 strength = min(0.8, 0.3 + 0.1 * tag_overlap)
                 engram.add_connection(
                     target_id=match.id,
-                    relation=ConnectionRelation.SUPPORTS,
+                    relation=ConnectionRelation.CO_ACTIVATED,
                     strength=strength,
-                    formed_by="consolidation",
+                    formed_by="consolidation_no_model",
                 )
                 stats["connections_created"] += 1
 
