@@ -1,4 +1,4 @@
-"""Tests for the dream journal: consolidation rendered as first-person narrative."""
+"""Tests for the dream journal: consolidation told in the memory engine's voice."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -55,7 +55,7 @@ def test_compose_returns_none_when_nothing_noteworthy():
 
 def test_compose_deep_cycle_writes_fallback():
     narrative = compose_dream_narrative({"cycle_type": "deep"}, [], promoted=0)
-    assert narrative == "I went through everything and it all still holds."
+    assert narrative == "The memory engine went through everything; it all still holds."
 
 
 def test_compose_includes_counts_and_belief_deltas():
@@ -79,13 +79,13 @@ def test_compose_includes_counts_and_belief_deltas():
     narrative = compose_dream_narrative(stats, deltas, promoted=2)
 
     assert narrative is not None
-    assert "Deep consolidation ran while you were away." in narrative
-    assert "I drew 2 new connections between memories" in narrative
-    assert "I softened 1 stale detail and kept their lessons." in narrative
+    assert "Deep consolidation ran." in narrative
+    assert "The memory engine drew 2 new connections between memories." in narrative
+    assert "1 stale detail was softened; their lessons were kept." in narrative
     assert "3 faded memories" in narrative
     assert '"tests matter" strengthened' in narrative
     assert "0.72 -> 0.81" in narrative
-    assert "promoted 2 continuity notes" in narrative
+    assert "2 continuity notes were promoted" in narrative
     assert "2 new thoughts surfaced" in narrative
     assert len(narrative) <= MAX_NARRATIVE_CHARS
 
@@ -174,7 +174,7 @@ def test_maintain_writes_dream_and_context_renders_section(tmp_path):
         assert runtime.last_dream_note_id is not None
         narrative = runtime.last_dream_narrative
         assert narrative is not None
-        assert "I promoted 1 continuity note into durable memory." in narrative
+        assert "1 continuity note was promoted into durable memory." in narrative
         assert runtime._get_meta("dream_last_written_at") is not None
 
         packet = runtime.context()
@@ -225,3 +225,29 @@ def test_polish_dream_revises_entry_and_rejects_bad_input(tmp_path):
         assert entry["content"] == "a warm short polish"
     finally:
         runtime.close()
+
+
+def test_no_sentence_speaks_as_him():
+    """The note is machinery's account, filed among his notes where a recall
+    can show it to him: it must never read as his own words (Tara's rule,
+    name machinery as machinery; Nov 7 2026)."""
+    import re
+
+    full = {
+        "cycle_type": "deep",
+        "connection_discovery": {"connections_created": 12},
+        "decay": {"engrams_archived": 2, "engrams_dormant": 0},
+        "softening": {"engrams_softened": 3, "lessons_created": 1, "lessons_reinforced": 0},
+        "reflection": {"thoughts_generated": 1},
+    }
+    dormant = {"cycle_type": "shallow", "connection_discovery": {"connections_created": 1},
+               "decay": {"engrams_archived": 0, "engrams_dormant": 4}}
+    deltas = [{"content": "tests matter", "old_confidence": 0.5, "new_confidence": 0.6}]
+    notes = [
+        compose_dream_narrative(full, deltas, promoted=1),
+        compose_dream_narrative(dormant, [], promoted=0),
+        compose_dream_narrative({"cycle_type": "deep"}, [], promoted=0),
+    ]
+    for note in notes:
+        assert note
+        assert not re.search(r"\b(I|I've|I'm|me|my|myself)\b", note), note

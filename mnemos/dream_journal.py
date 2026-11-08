@@ -3,8 +3,10 @@
 Maintenance is invisible by default — connections form, details soften,
 memories settle into the archive, and nobody hears about it. The dream
 journal turns a maintenance cycle that did meaningful work into a short
-first-person account of what the agent's sleep produced, written so the
-next session can know it. The narrative is deterministic; an optional
+account of what the memory engine did, written so the next session can know
+it. It is machinery's account, filed among the agent's notes, so it never
+speaks as the agent: no "I", no "my" (Tara's rule, name machinery as
+machinery; Nov 7 2026). The narrative is deterministic; an optional
 host-model pass may warm its voice without changing its facts.
 """
 
@@ -31,7 +33,7 @@ def compose_dream_narrative(
     belief_deltas: list[dict] | None = None,
     promoted: int = 0,
 ) -> str | None:
-    """Render a consolidation cycle as a short first-person narrative.
+    """Render a consolidation cycle as a short account in the engine's voice.
 
     Returns None when the cycle did nothing worth telling. Deep cycles are
     always worth telling, even when everything held steady.
@@ -59,23 +61,23 @@ def compose_dream_narrative(
 
     sentences: list[str] = []
     if is_deep:
-        sentences.append("Deep consolidation ran while you were away.")
+        sentences.append("Deep consolidation ran.")
     if connections_created > 0:
         sentences.append(
-            f"I drew {connections_created} new "
+            f"The memory engine drew {connections_created} new "
             f"{_plural(connections_created, 'connection', 'connections')} "
-            "between memories that belong together."
+            "between memories."
         )
     if engrams_softened > 0:
-        kept = "their lessons" if (lessons_created + lessons_reinforced) > 0 else "what mattered"
+        kept = "their lessons were" if (lessons_created + lessons_reinforced) > 0 else "what mattered was"
         sentences.append(
-            f"I softened {engrams_softened} stale "
-            f"{_plural(engrams_softened, 'detail', 'details')} and kept {kept}."
+            f"{engrams_softened} stale "
+            f"{_plural(engrams_softened, 'detail was', 'details were')} softened; {kept} kept."
         )
     if engrams_archived > 0:
         sentences.append(
-            f"I let {engrams_archived} faded "
-            f"{_plural(engrams_archived, 'memory', 'memories')} rest in the archive."
+            f"{engrams_archived} faded "
+            f"{_plural(engrams_archived, 'memory went', 'memories went')} to rest in the archive."
         )
     elif engrams_dormant > 0:
         sentences.append(
@@ -87,22 +89,22 @@ def compose_dream_narrative(
         new = float(delta.get("new_confidence", 0.0))
         verb = "strengthened" if new >= old else "softened"
         content = str(delta.get("content", ""))[:60]
-        sentences.append(f'My belief that "{content}" {verb} ({old:.2f} -> {new:.2f}).')
+        sentences.append(f'The belief "{content}" {verb} ({old:.2f} -> {new:.2f}).')
     if promoted > 0:
         sentences.append(
-            f"I promoted {promoted} continuity "
-            f"{_plural(promoted, 'note', 'notes')} into durable memory."
+            f"{promoted} continuity "
+            f"{_plural(promoted, 'note was', 'notes were')} promoted into durable memory."
         )
     if thoughts_generated > 0:
         sentences.append(
             f"{thoughts_generated} new "
-            f"{_plural(thoughts_generated, 'thought', 'thoughts')} surfaced as I worked."
+            f"{_plural(thoughts_generated, 'thought', 'thoughts')} surfaced during the pass."
         )
 
     # A deep cycle with nothing to report still deserves one true sentence.
     has_work = bool(sentences) and not (is_deep and len(sentences) == 1)
     if not has_work:
-        sentences = ["I went through everything and it all still holds."]
+        sentences = ["The memory engine went through everything; it all still holds."]
 
     narrative = " ".join(sentences)
     if len(narrative) > MAX_NARRATIVE_CHARS:
