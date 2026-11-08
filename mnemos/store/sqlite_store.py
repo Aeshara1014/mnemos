@@ -637,6 +637,15 @@ class EngramStore:
             ),
         )
 
+    def get_linking_sources(self, engram_id: str) -> set[str]:
+        """IDs of the memories that hold a link TO an engram."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT DISTINCT source_id FROM connections WHERE target_id = ?",
+            (engram_id,),
+        ).fetchall()
+        return {r[0] for r in rows}
+
     def get_connections(self, engram_id: str) -> list[Connection]:
         """Get all connections FROM an engram."""
         conn = self._get_conn()

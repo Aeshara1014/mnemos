@@ -151,6 +151,10 @@ class Encoder:
         self._embedding_index = embedding_index
         self._llm_client = llm_client
         self._shared_pool = shared_pool
+        # Links existing memories hold toward a memory being encoded (the
+        # model said the existing one is the source), by the new memory's id,
+        # until encode() has stored it and saves them.
+        self._incoming: dict[str, list[tuple[str, Connection]]] = {}
 
     def encode(
         self,
@@ -257,6 +261,9 @@ class Encoder:
 
         # 7. Persist
         self._store.save_engram(engram)
+        # ...and the links existing memories hold toward it, now it is stored.
+        for source_id, link in self._incoming.pop(engram.id, []):
+            self._store.save_connection(source_id, link)
 
         # 8. Auto-index embedding (if embedding index available)
         if self._embedding_index:
@@ -417,8 +424,12 @@ class Encoder:
         4. NONE results from LLM → filter out FTS5 false positives
 
         Returns at most max_connections connections, highest strength first.
+        A link the model says the EXISTING memory holds (direction reverse)
+        counts toward that cap but is not returned: encode() saves it from
+        the existing memory once this one is stored.
         """
         connections: list[Connection] = []
+        incoming: list[tuple[str, Connection]] = []
 
         # 1. Candidates (Tara's ruling, 2026-10-02 — the linking flaw): the
         # memory's most telling words, punctuation cleaned off rather than
@@ -475,15 +486,19 @@ class Encoder:
 
                 # Determine source/target based on direction
                 if cls.direction == "reverse":
-                    # Existing memory is the source (e.g., existing CAUSED new)
-                    connections.append(
+                    # Existing memory is the source (e.g., existing CAUSED
+                    # new): the link is its own, toward the new memory. It
+                    # was saved new -> existing, the same as forward
+                    # (Riley's 73f70b0; built here Nov 7 2026).
+                    incoming.append((
+                        cls.candidate_id,
                         Connection(
-                            target_id=cls.candidate_id,
+                            target_id=engram.id,
                             relation=cls.relation,
                             strength=round(strength, 3),
                             formed_by="encoding",
-                        )
-                    )
+                        ),
+                    ))
                 else:
                     # New memory is the source (default: forward)
                     connections.append(
@@ -537,6 +552,13 @@ class Encoder:
                             )
                         )
 
-        # 4. Sort by strength descending, cap at max_connections
-        connections.sort(key=lambda c: c.strength, reverse=True)
-        return connections[: self._max_connections]
+        # 4. Sort by strength descending, cap at max_connections, counting
+        # the links existing memories will hold toward this one among them.
+        ranked = sorted(
+            [(None, c) for c in connections] + incoming,
+            key=lambda pair: pair[1].strength, reverse=True,
+        )[: self._max_connections]
+        held = [(source, c) for source, c in ranked if source is not None]
+        if held:
+            self._incoming[engram.id] = held
+        return [c for source, c in ranked if source is None]

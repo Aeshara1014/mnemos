@@ -40,7 +40,8 @@ def test_night_pass_without_a_model_labels_a_match_co_activated(store):
 
     run_connection_discovery(store, embedding_index=None, config={}, llm_client=None)
 
-    [link] = _links(store, new, old)
+    # One link between the pair, whichever memory the pass reached first.
+    [link] = _links(store, new, old) + _links(store, old, new)
     assert link.relation == ConnectionRelation.CO_ACTIVATED
     assert link.formed_by == "consolidation_no_model"
 

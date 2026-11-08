@@ -89,7 +89,14 @@ def run_connection_discovery(
 
     for engram, existing_connections in underconnected[:max_per_pass]:
         stats["engrams_processed"] += 1
-        existing_target_ids = {c.target_id for c in existing_connections}
+        # A memory already linked either way is not offered again: a link
+        # the candidate holds toward this one (a reverse verdict, saved from
+        # the candidate) would otherwise be re-asked every night, and a
+        # mirror of a link already there adds nothing.
+        existing_target_ids = (
+            {c.target_id for c in existing_connections}
+            | store.get_linking_sources(engram.id)
+        )
         candidates = []
 
         # 1. Embedding-based candidates (if available)
@@ -140,12 +147,24 @@ def run_connection_discovery(
 
                 strength = min(0.95, cls.confidence + 0.05 * tag_overlap)
 
-                engram.add_connection(
-                    target_id=cls.candidate_id,
-                    relation=cls.relation,
-                    strength=round(strength, 3),
-                    formed_by="consolidation",
-                )
+                if cls.direction == "reverse":
+                    # The candidate is the source ("it caused this one"): the
+                    # link is its own, toward this memory. It was saved from
+                    # this memory, the wrong way (Riley's 73f70b0; built here
+                    # Nov 7 2026).
+                    store.save_connection(cls.candidate_id, Connection(
+                        target_id=engram.id,
+                        relation=cls.relation,
+                        strength=round(strength, 3),
+                        formed_by="consolidation",
+                    ))
+                else:
+                    engram.add_connection(
+                        target_id=cls.candidate_id,
+                        relation=cls.relation,
+                        strength=round(strength, 3),
+                        formed_by="consolidation",
+                    )
                 stats["connections_created"] += 1
         else:
             # No model (every shallow pass): a word or meaning match is

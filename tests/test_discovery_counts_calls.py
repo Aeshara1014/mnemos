@@ -3,7 +3,7 @@ failed, so the house can say "50 of 50 link calls failed" (Croft re-check
 #35, Tara's word 2026-10-10)."""
 
 from mnemos.consolidation.connection_discovery import run_connection_discovery
-from mnemos.encoding.encoder import Encoder
+from mnemos.core.engram import Engram
 
 
 class DownClient:
@@ -13,11 +13,12 @@ class DownClient:
 
 
 def test_discovery_counts_every_call_and_every_failure(store):
-    encoder = Encoder(store, llm_client=None)
+    # Saved unlinked: a pair already linked either way is not offered to
+    # the night again (Nov 7 2026), and this test needs the calls made.
     for words in ("the obsidian shards on the croft windowsill",
                   "she asked about the obsidian shards again",
                   "obsidian shards and the drystone wall"):
-        encoder.encode(content=words)
+        store.save_engram(Engram(content=words))
     stats = run_connection_discovery(store, llm_client=DownClient(), agent_id="default")
     assert stats["discovery_calls"] >= 1
     assert stats["discovery_call_failures"] == stats["discovery_calls"]
