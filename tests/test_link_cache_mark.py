@@ -70,7 +70,11 @@ def test_the_marked_ask_carries_the_same_words(monkeypatch):
     classify_connections(client, new, cands, cache=True)
     plain, marked = bodies[0]["messages"][1]["content"], bodies[1]["messages"][1]["content"]
     assert isinstance(plain, str)
-    assert marked == [{"type": "text", "text": plain, "cache_control": {"type": "ephemeral"}}]
+    # 2026-11-09: in two pieces, the last line plain (a mark that closes
+    # the ask bills double; tests/test_never_end_on_a_mark.py).
+    assert "".join(p["text"] for p in marked) == plain
+    assert marked[0]["cache_control"] == {"type": "ephemeral"}
+    assert marked[-1] == {"type": "text", "text": plain[plain.rstrip().rfind("\n") + 1:]}
     assert bodies[0]["messages"][0] == bodies[1]["messages"][0]     # same instructions
 
 

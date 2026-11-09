@@ -271,14 +271,22 @@ class OpenRouterClient:
         default — callers on a hot path (the encode-time classifier) pass
         a short cap so a dead call can never hold a worker for minutes.
 
-        cache=True marks a Google model's user words cacheable (same
-        words). A mark the provider refuses (400) is asked again plain,
-        once; any other model ignores it."""
+        cache=True marks a Google model's user words cacheable, all but
+        the last line (same words, in two pieces). A mark the provider
+        refuses (400) is asked again plain, once; any other model ignores
+        it."""
         import json
         import urllib.error
         import urllib.request
 
-        marked = cache and self._model.startswith("google/")
+        # No ask ends on its mark (her export, 2026-11-09): a mark with
+        # nothing after it is billed as the whole prompt twice ($2.575 a
+        # million against $2 unmarked); with plain words after it the
+        # marked part bills at $0.575. So the ask goes in two pieces, its
+        # last line plain; a one-line ask goes plain.
+        cut = user.rstrip().rfind("\n")
+        marked = (cache and self._model.startswith("google/")
+                  and cut >= 0 and bool(user[:cut].strip()))
         payload = {
             "model": self._model,
             "max_tokens": self._budget(max_tokens),
@@ -286,8 +294,9 @@ class OpenRouterClient:
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": (
-                    [{"type": "text", "text": user,
-                      "cache_control": {"type": "ephemeral"}}] if marked else user)},
+                    [{"type": "text", "text": user[:cut + 1],
+                      "cache_control": {"type": "ephemeral"}},
+                     {"type": "text", "text": user[cut + 1:]}] if marked else user)},
             ],
         }
         reasoning = self._reasoning()
