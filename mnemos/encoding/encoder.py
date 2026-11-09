@@ -465,8 +465,10 @@ class Encoder:
         # 2. Classify relationships via LLM (or fall back to CO_ACTIVATED)
         if self._llm_client and fts_candidates:
             # LLM-based classification — batched single call
+            # Marked cacheable (Tara, 2026-11-08): same words, about 29% of
+            # the input price. The night's discovery and re-sort stay plain.
             classifications = classify_connections(
-                self._llm_client, engram, fts_candidates,
+                self._llm_client, engram, fts_candidates, cache=True,
             )
             # None = the call failed (law 9): mint no edges from it.
             if classifications is None:

@@ -171,6 +171,7 @@ def classify_connections(
     new_engram: "Engram",
     candidates: list["Engram"],
     include_verdicts: bool = False,
+    cache: bool = False,
 ) -> list[ConnectionClassification] | None:
     """Classify relationship types between a new memory and candidates.
 
@@ -186,6 +187,9 @@ def classify_connections(
 
     Returns None when the call itself failed — a failed call must never
     look like an empty answer (law 9); nothing may be inferred from it.
+
+    cache=True (the encoder's ask only, 2026-11-08) marks the ask
+    cacheable on a client that takes the mark; the words are the same.
     """
     if not candidates:
         return []
@@ -220,6 +224,7 @@ def classify_connections(
     user_prompt = "\n".join(user_parts)
 
     # Make the LLM call
+    marked = {"cache": True} if cache and getattr(client, "takes_cache_mark", False) else {}
     try:
         raw_response = client.structured_complete(
             system=CONNECTION_SYSTEM_PROMPT,
@@ -227,6 +232,7 @@ def classify_connections(
             temperature=0.0,
             max_tokens=2000,
             timeout=CLASSIFIER_CALL_TIMEOUT,
+            **marked,
         )
     except Exception as e:
         log.error("Connection classification LLM call failed: %s", e)

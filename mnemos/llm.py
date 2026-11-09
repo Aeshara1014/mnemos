@@ -200,6 +200,11 @@ class OpenRouterClient:
     # returned only "Despite the".
     _REASONING_HEADROOM = {"low": 512, "medium": 1024, "high": 2048}
 
+    # structured_complete takes cache=True (Tara's word, 2026-11-08): a
+    # Google model's user words go marked cacheable, billed at about 29% of
+    # the input price even the first time. Callers check this before asking.
+    takes_cache_mark = True
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -259,40 +264,57 @@ class OpenRouterClient:
         temperature: float = 0.0,
         max_tokens: int = 2000,
         timeout: float | None = None,
+        cache: bool = False,
     ) -> str:
         """Send a system+user prompt with temperature control. timeout,
         when given, caps this one call (seconds); None keeps the 120s
         default — callers on a hot path (the encode-time classifier) pass
-        a short cap so a dead call can never hold a worker for minutes."""
+        a short cap so a dead call can never hold a worker for minutes.
+
+        cache=True marks a Google model's user words cacheable (same
+        words). A mark the provider refuses (400) is asked again plain,
+        once; any other model ignores it."""
         import json
+        import urllib.error
         import urllib.request
 
+        marked = cache and self._model.startswith("google/")
         payload = {
             "model": self._model,
             "max_tokens": self._budget(max_tokens),
             "temperature": temperature,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": user},
+                {"role": "user", "content": (
+                    [{"type": "text", "text": user,
+                      "cache_control": {"type": "ephemeral"}}] if marked else user)},
             ],
         }
         reasoning = self._reasoning()
         if reasoning is not None:
             payload["reasoning"] = reasoning
-        body = json.dumps(payload).encode()
 
-        req = urllib.request.Request(
-            "https://openrouter.ai/api/v1/chat/completions",
-            data=body,
-            headers={
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json",
-            },
-        )
-        with urllib.request.urlopen(
-                req, timeout=timeout if timeout is not None else 120) as resp:
-            data = json.loads(resp.read())
-        return data["choices"][0]["message"]["content"]
+        def post(body: dict) -> str:
+            req = urllib.request.Request(
+                "https://openrouter.ai/api/v1/chat/completions",
+                data=json.dumps(body).encode(),
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(
+                    req, timeout=timeout if timeout is not None else 120) as resp:
+                data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"]
+
+        try:
+            return post(payload)
+        except urllib.error.HTTPError as exc:
+            if not (marked and exc.code == 400):
+                raise
+            payload["messages"][1]["content"] = user
+            return post(payload)
 
 
 class MockClient:
