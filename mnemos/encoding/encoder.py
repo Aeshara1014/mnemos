@@ -151,6 +151,10 @@ class Encoder:
         self._embedding_index = embedding_index
         self._llm_client = llm_client
         self._shared_pool = shared_pool
+        # The beliefs the last encoded memory supports, by id (Tara,
+        # 2026-11-08): named for the house's weather (clarity), never
+        # written to the belief. Fresh for each memory.
+        self.beliefs_supported: list[str] = []
         # Links existing memories hold toward a memory being encoded (the
         # model said the existing one is the source), by the new memory's id,
         # until encode() has stored it and saves them.
@@ -249,6 +253,7 @@ class Encoder:
 
         # 6. SHIFT 3: Surprise detection — check for contradictions
         # Skip for reflections/metacognition (they examine beliefs, not contradict them)
+        self.beliefs_supported = []
         if skip_surprise_detection:
             surprise = 0.0
         else:
@@ -350,6 +355,10 @@ class Encoder:
                 belief = belief_map.get(evaluation.belief_id)
                 if not belief:
                     continue
+
+                # A belief proven right is only named (for clarity), never moved.
+                if evaluation.relation == "SUPPORTS":
+                    self.beliefs_supported.append(belief.id)
 
                 # Track surprise from contradictions
                 if evaluation.relation == "CONTRADICTS":
