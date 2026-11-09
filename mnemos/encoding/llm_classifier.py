@@ -319,6 +319,9 @@ def evaluate_beliefs(
 
         user_prompt = "\n".join(user_parts)
 
+        # Marked cacheable on a client that takes it (Tara, 2026-11-08):
+        # same words, about 29% of the input price.
+        marked = {"cache": True} if getattr(client, "takes_cache_mark", False) else {}
         try:
             raw_response = client.structured_complete(
                 system=BELIEF_SYSTEM_PROMPT,
@@ -326,6 +329,7 @@ def evaluate_beliefs(
                 temperature=0.0,
                 max_tokens=2000,
                 timeout=CLASSIFIER_CALL_TIMEOUT,
+                **marked,
             )
         except Exception as e:
             log.error("Belief evaluation LLM call failed: %s", e)
