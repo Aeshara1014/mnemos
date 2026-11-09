@@ -205,6 +205,16 @@ class OpenRouterClient:
     # the input price even the first time. Callers check this before asking.
     takes_cache_mark = True
 
+    # structured_complete takes half_price=True (Tara's word, 2026-11-09)
+    # for an ask nobody waits on: a Google model is asked on OpenRouter's
+    # half-price "flex" tier first, pinned to Google Vertex. Tested that
+    # day on copies: Vertex answered every ask in about 100 s (about 88 s
+    # before its first word) and judged as the normal lane does; Google AI
+    # Studio's half-price lane refused about a third of his memories, so
+    # it is never asked. Callers check this before asking.
+    takes_half_price = True
+    HALF_PRICE_WAIT = 180.0     # seconds; past this the normal lane is asked
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -265,6 +275,7 @@ class OpenRouterClient:
         max_tokens: int = 2000,
         timeout: float | None = None,
         cache: bool = False,
+        half_price: bool = False,
     ) -> str:
         """Send a system+user prompt with temperature control. timeout,
         when given, caps this one call (seconds); None keeps the 120s
@@ -274,7 +285,13 @@ class OpenRouterClient:
         cache=True marks a Google model's user words cacheable, all but
         the last line (same words, in two pieces). A mark the provider
         refuses (400) is asked again plain, once; any other model ignores
-        it."""
+        it.
+
+        half_price=True (an ask nobody waits on) sends the same ask to
+        Vertex's half-price lane first and waits up to HALF_PRICE_WAIT.
+        If that lane fails, stays silent or answers nothing, the normal
+        lane is asked exactly as it would have been: a slow lane never
+        becomes a failed call (law 9). Any other model ignores it."""
         import json
         import urllib.error
         import urllib.request
@@ -303,7 +320,7 @@ class OpenRouterClient:
         if reasoning is not None:
             payload["reasoning"] = reasoning
 
-        def post(body: dict) -> str:
+        def post(body: dict, wait: float | None = None) -> str:
             req = urllib.request.Request(
                 "https://openrouter.ai/api/v1/chat/completions",
                 data=json.dumps(body).encode(),
@@ -312,10 +329,23 @@ class OpenRouterClient:
                     "Content-Type": "application/json",
                 },
             )
-            with urllib.request.urlopen(
-                    req, timeout=timeout if timeout is not None else 120) as resp:
+            if wait is None:
+                wait = timeout if timeout is not None else 120
+            with urllib.request.urlopen(req, timeout=wait) as resp:
                 data = json.loads(resp.read())
             return data["choices"][0]["message"]["content"]
+
+        if half_price and self._model.startswith("google/"):
+            try:
+                answer = post({**payload, "service_tier": "flex",
+                               "provider": {"only": ["google-vertex"]}},
+                              wait=self.HALF_PRICE_WAIT)
+                if isinstance(answer, str) and answer.strip():
+                    return answer
+                logger.info("the half-price lane answered nothing; the normal lane is asked")
+            except Exception as exc:  # noqa: BLE001 — any trouble: the normal lane
+                logger.info("the half-price lane did not answer (%s); the normal lane is asked",
+                            type(exc).__name__)
 
         try:
             return post(payload)
