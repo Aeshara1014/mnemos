@@ -171,8 +171,6 @@ def classify_connections(
     new_engram: "Engram",
     candidates: list["Engram"],
     include_verdicts: bool = False,
-    cache: bool = False,
-    half_price: bool = False,
 ) -> list[ConnectionClassification] | None:
     """Classify relationship types between a new memory and candidates.
 
@@ -188,13 +186,6 @@ def classify_connections(
 
     Returns None when the call itself failed — a failed call must never
     look like an empty answer (law 9); nothing may be inferred from it.
-
-    cache=True (the encoder's ask only, 2026-11-08) marks the ask
-    cacheable on a client that takes the mark; the words are the same.
-
-    half_price=True (a memory nobody waits on, 2026-11-09) asks a client
-    that has one for its half-price lane first; the answer is the same
-    kind either way.
     """
     if not candidates:
         return []
@@ -229,9 +220,6 @@ def classify_connections(
     user_prompt = "\n".join(user_parts)
 
     # Make the LLM call
-    marked = {"cache": True} if cache and getattr(client, "takes_cache_mark", False) else {}
-    if half_price and getattr(client, "takes_half_price", False):
-        marked["half_price"] = True
     try:
         raw_response = client.structured_complete(
             system=CONNECTION_SYSTEM_PROMPT,
@@ -239,7 +227,6 @@ def classify_connections(
             temperature=0.0,
             max_tokens=2000,
             timeout=CLASSIFIER_CALL_TIMEOUT,
-            **marked,
         )
     except Exception as e:
         log.error("Connection classification LLM call failed: %s", e)
@@ -273,7 +260,6 @@ def evaluate_beliefs(
     new_engram: "Engram",
     beliefs: list["Belief"],
     chunk_size: int = BELIEF_EVAL_CHUNK_SIZE,
-    half_price: bool = False,
 ) -> list[BeliefEvaluation] | None:
     """Evaluate how a new memory relates to active beliefs.
 
@@ -292,8 +278,6 @@ def evaluate_beliefs(
         beliefs: Active beliefs to evaluate against.
         chunk_size: Beliefs per call; the default keeps replies well
             inside the budget.
-        half_price: nobody waits on this memory (2026-11-09): a client
-            that has a half-price lane is asked there first.
 
     Returns:
         List of BeliefEvaluation results (NO_BEARING filtered out), or
@@ -329,11 +313,6 @@ def evaluate_beliefs(
 
         user_prompt = "\n".join(user_parts)
 
-        # Marked cacheable on a client that takes it (Tara, 2026-11-08):
-        # same words, about 29% of the input price.
-        marked = {"cache": True} if getattr(client, "takes_cache_mark", False) else {}
-        if half_price and getattr(client, "takes_half_price", False):
-            marked["half_price"] = True
         try:
             raw_response = client.structured_complete(
                 system=BELIEF_SYSTEM_PROMPT,
@@ -341,7 +320,6 @@ def evaluate_beliefs(
                 temperature=0.0,
                 max_tokens=2000,
                 timeout=CLASSIFIER_CALL_TIMEOUT,
-                **marked,
             )
         except Exception as e:
             log.error("Belief evaluation LLM call failed: %s", e)

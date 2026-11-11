@@ -151,10 +151,6 @@ class Encoder:
         self._embedding_index = embedding_index
         self._llm_client = llm_client
         self._shared_pool = shared_pool
-        # The beliefs the last encoded memory supports, by id (Tara,
-        # 2026-11-08): named for the house's weather (clarity), never
-        # written to the belief. Fresh for each memory.
-        self.beliefs_supported: list[str] = []
         # Links existing memories hold toward a memory being encoded (the
         # model said the existing one is the source), by the new memory's id,
         # until encode() has stored it and saves them.
@@ -173,7 +169,6 @@ class Encoder:
         override_confidence: float | None = None,
         override_confidence_source: str | None = None,
         skip_surprise_detection: bool = False,
-        half_price: bool = False,
     ) -> Engram:
         """Create a new engram from raw content.
 
@@ -190,9 +185,6 @@ class Encoder:
             emotional_state: Current emotional state dict (6 dimensions).
             override_confidence: If set, use this confidence score instead of auto-scoring.
             override_confidence_source: If set, use this confidence source label.
-            half_price: Nobody waits on this memory (Tara, 2026-11-09): its
-                link-finding and belief check ask the half-price lane first.
-                Slower (about 100 s an ask); the same asks and answers.
 
         Returns:
             The fully-formed, persisted Engram with connections attached.
@@ -249,10 +241,7 @@ class Encoder:
         )
 
         # 5. Discover connections to existing memories
-        # (the word rides only when given: a subclass with the older shape,
-        # like the house's seeding door, is called exactly as before)
-        patient = {"half_price": True} if half_price else {}
-        connections = self._discover_connections(engram, self._store, **patient)
+        connections = self._discover_connections(engram, self._store)
         for conn in connections:
             engram.add_connection(
                 conn.target_id, conn.relation, conn.strength, conn.formed_by
@@ -260,11 +249,10 @@ class Encoder:
 
         # 6. SHIFT 3: Surprise detection — check for contradictions
         # Skip for reflections/metacognition (they examine beliefs, not contradict them)
-        self.beliefs_supported = []
         if skip_surprise_detection:
             surprise = 0.0
         else:
-            surprise = self._detect_surprise(engram, self._store, **patient)
+            surprise = self._detect_surprise(engram, self._store)
         if surprise > 0:
             engram.encoding_context.surprise_level = surprise
             # Deep encoding: boost strength and stability proportional to surprise
@@ -315,7 +303,6 @@ class Encoder:
         self,
         engram: Engram,
         store: EngramStore,
-        half_price: bool = False,
     ) -> float:
         """Detect if new content contradicts existing beliefs or memories.
 
@@ -349,7 +336,6 @@ class Encoder:
         if self._llm_client:
             evaluations = evaluate_beliefs(
                 self._llm_client, engram, beliefs,
-                **({"half_price": True} if half_price else {}),
             )
             # None = the call failed (law 9). On the encode path failure
             # and emptiness both mean "update nothing" — collapse here,
@@ -364,10 +350,6 @@ class Encoder:
                 belief = belief_map.get(evaluation.belief_id)
                 if not belief:
                     continue
-
-                # A belief proven right is only named (for clarity), never moved.
-                if evaluation.relation == "SUPPORTS":
-                    self.beliefs_supported.append(belief.id)
 
                 # Track surprise from contradictions
                 if evaluation.relation == "CONTRADICTS":
@@ -430,7 +412,6 @@ class Encoder:
         self,
         engram: Engram,
         store: EngramStore,
-        half_price: bool = False,
     ) -> list[Connection]:
         """Find related engrams and create typed connections.
 
@@ -484,11 +465,8 @@ class Encoder:
         # 2. Classify relationships via LLM (or fall back to CO_ACTIVATED)
         if self._llm_client and fts_candidates:
             # LLM-based classification — batched single call
-            # Marked cacheable (Tara, 2026-11-08): same words, about 29% of
-            # the input price. The night's discovery and re-sort stay plain.
             classifications = classify_connections(
-                self._llm_client, engram, fts_candidates, cache=True,
-                **({"half_price": True} if half_price else {}),
+                self._llm_client, engram, fts_candidates,
             )
             # None = the call failed (law 9): mint no edges from it.
             if classifications is None:

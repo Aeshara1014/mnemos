@@ -200,21 +200,6 @@ class OpenRouterClient:
     # returned only "Despite the".
     _REASONING_HEADROOM = {"low": 512, "medium": 1024, "high": 2048}
 
-    # structured_complete takes cache=True (Tara's word, 2026-11-08): a
-    # Google model's user words go marked cacheable, billed at about 29% of
-    # the input price even the first time. Callers check this before asking.
-    takes_cache_mark = True
-
-    # structured_complete takes half_price=True (Tara's word, 2026-11-09)
-    # for an ask nobody waits on: a Google model is asked on OpenRouter's
-    # half-price "flex" tier first, pinned to Google Vertex. Tested that
-    # day on copies: Vertex answered every ask in about 100 s (about 88 s
-    # before its first word) and judged as the normal lane does; Google AI
-    # Studio's half-price lane refused about a third of his memories, so
-    # it is never asked. Callers check this before asking.
-    takes_half_price = True
-    HALF_PRICE_WAIT = 180.0     # seconds; past this the normal lane is asked
-
     def __init__(
         self,
         api_key: str | None = None,
@@ -274,86 +259,40 @@ class OpenRouterClient:
         temperature: float = 0.0,
         max_tokens: int = 2000,
         timeout: float | None = None,
-        cache: bool = False,
-        half_price: bool = False,
     ) -> str:
         """Send a system+user prompt with temperature control. timeout,
         when given, caps this one call (seconds); None keeps the 120s
         default — callers on a hot path (the encode-time classifier) pass
-        a short cap so a dead call can never hold a worker for minutes.
-
-        cache=True marks a Google model's user words cacheable, all but
-        the last line (same words, in two pieces). A mark the provider
-        refuses (400) is asked again plain, once; any other model ignores
-        it.
-
-        half_price=True (an ask nobody waits on) sends the same ask to
-        Vertex's half-price lane first and waits up to HALF_PRICE_WAIT.
-        If that lane fails, stays silent or answers nothing, the normal
-        lane is asked exactly as it would have been: a slow lane never
-        becomes a failed call (law 9). Any other model ignores it."""
+        a short cap so a dead call can never hold a worker for minutes."""
         import json
-        import urllib.error
         import urllib.request
 
-        # No ask ends on its mark (her export, 2026-11-09): a mark with
-        # nothing after it is billed as the whole prompt twice ($2.575 a
-        # million against $2 unmarked); with plain words after it the
-        # marked part bills at $0.575. So the ask goes in two pieces, its
-        # last line plain; a one-line ask goes plain.
-        cut = user.rstrip().rfind("\n")
-        marked = (cache and self._model.startswith("google/")
-                  and cut >= 0 and bool(user[:cut].strip()))
         payload = {
             "model": self._model,
             "max_tokens": self._budget(max_tokens),
             "temperature": temperature,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": (
-                    [{"type": "text", "text": user[:cut + 1],
-                      "cache_control": {"type": "ephemeral"}},
-                     {"type": "text", "text": user[cut + 1:]}] if marked else user)},
+                {"role": "user", "content": user},
             ],
         }
         reasoning = self._reasoning()
         if reasoning is not None:
             payload["reasoning"] = reasoning
+        body = json.dumps(payload).encode()
 
-        def post(body: dict, wait: float | None = None) -> str:
-            req = urllib.request.Request(
-                "https://openrouter.ai/api/v1/chat/completions",
-                data=json.dumps(body).encode(),
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
-            if wait is None:
-                wait = timeout if timeout is not None else 120
-            with urllib.request.urlopen(req, timeout=wait) as resp:
-                data = json.loads(resp.read())
-            return data["choices"][0]["message"]["content"]
-
-        if half_price and self._model.startswith("google/"):
-            try:
-                answer = post({**payload, "service_tier": "flex",
-                               "provider": {"only": ["google-vertex"]}},
-                              wait=self.HALF_PRICE_WAIT)
-                if isinstance(answer, str) and answer.strip():
-                    return answer
-                logger.info("the half-price lane answered nothing; the normal lane is asked")
-            except Exception as exc:  # noqa: BLE001 — any trouble: the normal lane
-                logger.info("the half-price lane did not answer (%s); the normal lane is asked",
-                            type(exc).__name__)
-
-        try:
-            return post(payload)
-        except urllib.error.HTTPError as exc:
-            if not (marked and exc.code == 400):
-                raise
-            payload["messages"][1]["content"] = user
-            return post(payload)
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(
+                req, timeout=timeout if timeout is not None else 120) as resp:
+            data = json.loads(resp.read())
+        return data["choices"][0]["message"]["content"]
 
 
 class MockClient:
