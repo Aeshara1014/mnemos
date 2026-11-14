@@ -44,6 +44,19 @@ log = logging.getLogger("mnemos.classifier")
 # night a 120s-default hang held the chat door shut for 3m41s).
 CLASSIFIER_CALL_TIMEOUT = 45.0
 
+
+def _call_timeout() -> float:
+    """The limit for one classifier call. 45 s unless the dreamer asks for
+    longer (MNEMOS_CLASSIFIER_TIMEOUT, seconds): a local model on this Mac
+    measured 40 to 61 s on the same work (2026-11-13), and her word was that
+    a local dreamer may take its time. Anything unreadable keeps the 45."""
+    import os
+    try:
+        asked = float(os.environ.get("MNEMOS_CLASSIFIER_TIMEOUT", ""))
+    except ValueError:
+        return CLASSIFIER_CALL_TIMEOUT
+    return asked if asked > 0 else CLASSIFIER_CALL_TIMEOUT
+
 # The 7 core types the LLM is allowed to return
 VALID_RELATIONS = {
     "SUPPORTS", "CONTRADICTS", "CAUSES", "EXTENDS",
@@ -231,7 +244,7 @@ def classify_connections(
             user=user_prompt,
             temperature=0.0,
             max_tokens=2000,
-            timeout=CLASSIFIER_CALL_TIMEOUT,
+            timeout=_call_timeout(),
             **marked,
         )
     except Exception as e:
@@ -328,7 +341,7 @@ def evaluate_beliefs(
                 user=user_prompt,
                 temperature=0.0,
                 max_tokens=2000,
-                timeout=CLASSIFIER_CALL_TIMEOUT,
+                timeout=_call_timeout(),
                 **marked,
             )
         except Exception as e:

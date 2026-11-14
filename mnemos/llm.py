@@ -580,6 +580,7 @@ def _create_client_unchecked() -> "LLMClient | None":
                 base_url=base_url,
                 model=model_override or "local-model",
                 api_key=_load_env_key("MNEMOS_LLM_API_KEY"),
+                wire_model=os.environ.get("MNEMOS_LLM_WIRE_MODEL", ""),
             )
         # Explicit LOCAL intent is never satisfied by a cloud key. Falling
         # through to auto-detection here could silently hand the substrate
@@ -639,6 +640,7 @@ def _create_client_unchecked() -> "LLMClient | None":
             base_url=base_url,
             model=model_override or "local-model",
             api_key=_load_env_key("MNEMOS_LLM_API_KEY"),
+            wire_model=os.environ.get("MNEMOS_LLM_WIRE_MODEL", ""),
         )
 
     anthropic_key = _load_env_key("ANTHROPIC_API_KEY")
@@ -768,9 +770,15 @@ class OpenAICompatibleClient:
         api_key: str | None = None,
         max_tokens: int = 500,
         timeout: int = 300,
+        wire_model: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
+        # The name sent on the wire, when it differs from the model's own
+        # name (MNEMOS_LLM_WIRE_MODEL). A one-model local server knows its
+        # model by its own word ("default_model"); the pairing gate still
+        # reads self._model.
+        self._wire_model = (wire_model or "").strip()
         self._api_key = (api_key or "").strip()
         self._max_tokens = max_tokens
         self._timeout = timeout
@@ -779,7 +787,7 @@ class OpenAICompatibleClient:
               max_tokens: int | None = None,
               timeout: float | None = None) -> str:
         payload: dict = {
-            "model": self._model,
+            "model": self._wire_model or self._model,
             "max_tokens": max_tokens or self._max_tokens,
             "messages": messages,
         }
