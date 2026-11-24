@@ -155,6 +155,7 @@ class Encoder:
         # 2026-11-08): named for the house's weather (clarity), never
         # written to the belief. Fresh for each memory.
         self.beliefs_supported: list[str] = []
+        self.checks_failed: list[str] = []
         # Links existing memories hold toward a memory being encoded (the
         # model said the existing one is the source), by the new memory's id,
         # until encode() has stored it and saves them.
@@ -243,6 +244,11 @@ class Encoder:
             source=memory_source,
             owner_agent_id=agent_id,
         )
+
+        # Which of this memory's checks failed (her word, 2026-11-23): read
+        # by the house after encode, like beliefs_supported, so the feed
+        # never says only "memory made" over a failed link or belief check.
+        self.checks_failed = []
 
         # 5. Discover connections to existing memories
         connections = self._discover_connections(engram, self._store)
@@ -346,6 +352,7 @@ class Encoder:
             # and emptiness both mean "update nothing" — collapse here,
             # AFTER the distinction existed for callers who need it.
             if evaluations is None:
+                self.checks_failed.append("beliefs")
                 evaluations = []
 
             # Build lookup
@@ -481,6 +488,7 @@ class Encoder:
             )
             # None = the call failed (law 9): mint no edges from it.
             if classifications is None:
+                self.checks_failed.append("links")
                 classifications = []
             for cls in classifications:
                 # Use classifier confidence as connection strength
